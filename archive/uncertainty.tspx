@@ -5,7 +5,7 @@ loadscript Uncertainty
 -- $Description: Calculates measurement uncertainty
 -- $Requires: v1.0.01f
 -- $Icon: uncertainty_icon
--- Last Updated: $Date: 2024-11-18
+-- Last Updated: $Date: 2024-10-27
 --[[
 Script: Uncertainty.tspa
 Written by: Johannes Raschke
@@ -22,7 +22,8 @@ TODO:
 * Disable / clear error limit display if Overflow
 * Support more measurement functions of the 6500
   (currently supported: DCV, DCI, RESISTANCE, 4W-Resistance)
-* add support for K7510 (I probably won't have the nerve to do that)
+* Konfigurationsseite für AC-Frequenz einfügen
+* K7510 unterstützen
 
 ***********************************************************
 *** Copyright 2024 Johannes Raschke                     ***
@@ -93,23 +94,16 @@ function open_settings() -- Opens the settings screen
     display.setevent(triggerReadingsFromApp_id, display.EVENT_PRESS, "triggerReadingsFromAppEvent(%value)")
     display.setvalue(triggerReadingsFromApp_id, triggerReadingsFromApp)
 
-    local AcvFrequency_id = display.create(settings_id, display.OBJ_EDIT_OPTION, 200, 170, "ACV frequency", "Frequency for ACV", "3 Hz - 5 Hz",   -- 1
-                                                                                                                                "5 Hz - 10 Hz",   -- 2
-                                                                                                                                "10 Hz - 20 kHz", -- 3
-                                                                                                                                "20 - 50 kHz",    -- 4
-                                                                                                                                "50 - 100 kHz",   -- 5
-                                                                                                                                "100 - 300 kHz")  -- 6
-    display.setevent(AcvFrequency_id, display.EVENT_PRESS, "AcvFrequencyEvent(%value)")
-    display.setvalue(AcvFrequency_id, AcvFrequency)
+    local AcFrequency_id = display.create(settings_id, display.OBJ_EDIT_OPTION, 200, 170, "AC frequency", "Frequency for ACV and ACI", "3 Hz - 5 Hz",     -- 1
+                                                                                                                                        "5 Hz - 10 Hz",   -- 2
+                                                                                                                                        "10 Hz - 20 kHz", -- 3
+                                                                                                                                        "20 - 50 kHz",    -- 4
+                                                                                                                                        "50 - 100 kHz",   -- 5
+                                                                                                                                        "100 - 300 kHz")  -- 6
+    display.setevent(AcFrequency_id, display.EVENT_PRESS, "AcFrequencyEvent(%value)")
+    display.setvalue(AcFrequency_id, AcvFrequency)
 
-    local AciFrequency_id = display.create(settings_id, display.OBJ_EDIT_OPTION, 200, 250, "ACI frequency", "Frequency for ACI", "3 Hz - 5 Hz",     -- 1
-                                                                                                                                 "5 Hz - 1 kHz",    -- 2
-                                                                                                                                 "1 kHz - 5 kHz",   -- 3
-                                                                                                                                 "5 kHz - 10 kHz")  -- 4                                                                                                                         
-    display.setevent(AciFrequency_id, display.EVENT_PRESS, "AciFrequencyEvent(%value)")
-    display.setvalue(AciFrequency_id, AciFrequency)
-
-    -- note: add next button here
+    -- note: add next button at y=170 (e.g. AC frequency)
 
     local exit_id = display.create(settings_id, display.OBJ_BUTTON, 350, 360, "Back")
     display.setevent(exit_id, display.EVENT_PRESS, "close_settings()")
@@ -123,12 +117,8 @@ function triggerReadingsFromAppEvent(v)
     triggerReadingsFromApp = v
 end
 
-function AcvFrequencyEvent(v)
+function AcFrequencyEvent(v)
     AcvFrequency = v
-end
-
-function AciFrequencyEvent(v)
-    AciFrequency = v
 end
 
 function close_settings() -- Closes the settings screen and goes back to swipe_id
@@ -143,18 +133,16 @@ function show_hints()
     hints_id = display.create(display.ROOT, display.OBJ_SCREEN, 'Uncertainty improvement hints')
     local operatorHints = {} --create a new list
     
+    if(dmm.measure.nplc < 1.0) then
+        table.insert(operatorHints, "- Use NPLC = 1 to 5 for best noise performance")
+    elseif(math.mod(dmm.measure.nplc,1) ~= 0) then -- NPLC > 1, but non-integer
+        table.insert(operatorHints, "- Set NPLC to a number without decimal places for")
+        table.insert(operatorHints, "   AC line interference rejection")
+    end
 
     if((dmm.measure.func == dmm.FUNC_RESISTANCE) or (dmm.measure.func == dmm.FUNC_4W_RESISTANCE)
         or (dmm.measure.func == dmm.FUNC_DC_CURRENT) or (dmm.measure.func == dmm.FUNC_DC_VOLTAGE)
-        or (dmm.measure.func == dmm.FUNC_TEMPERATURE) or (dmm.measure.func == dmm.FUNC_DCV_RATIO)) then -- all non-AC measurements
-        
-        if(dmm.measure.nplc < 1.0) then
-            table.insert(operatorHints, "- Use NPLC = 1 to 5 for best noise performance")
-        elseif(math.mod(dmm.measure.nplc,1) ~= 0) then -- NPLC > 1, but non-integer
-            table.insert(operatorHints, "- Set NPLC to a number without decimal places for better")
-            table.insert(operatorHints, "   AC line interference rejection")
-        end
-
+        or (dmm.measure.func == dmm.FUNC_TEMPERATURE) or (dmm.measure.func == dmm.FUNC_DCV_RATIO)) then
         if(dmm.measure.linesync == dmm.OFF) then
             table.insert(operatorHints, "- Switch on Line Sync to reduce noise and improve")
             table.insert(operatorHints, "   NMRR and CMRR (even at high NPLC settings)")
@@ -164,14 +152,8 @@ function show_hints()
         table.insert(operatorHints, "- Set the input impedance to AUTO for lower noise and higher")
         table.insert(operatorHints, "   isolation under most circumstances (see ref manual)")
     end
-
-    if((dmm.measure.func == dmm.FUNC_RESISTANCE) or (dmm.measure.func == dmm.FUNC_4W_RESISTANCE)
-        or (dmm.measure.func == dmm.FUNC_DC_CURRENT) or (dmm.measure.func == dmm.FUNC_DC_VOLTAGE)
-        or (dmm.measure.func == dmm.FUNC_TEMPERATURE) or (dmm.measure.func == dmm.FUNC_DCV_RATIO)) 
-        or (dmm.measure.func == dmm.FUNC_DIODE)then
-        if(dmm.measure.autozero.enable == dmm.OFF) then
-            table.insert(operatorHints, "- Switch on Auto Zero to reduce offset drift")
-        end
+    if(dmm.measure.autozero.enable == dmm.OFF) then
+        table.insert(operatorHints, "- Switch on Auto Zero to reduce offset drift")
     end
     if((dmm.measure.func == dmm.FUNC_RESISTANCE) and (dmm.measure.range <= 1000 )) then
         table.insert(operatorHints, "- Consider using 4-wire resistance mode, especially")
@@ -202,39 +184,15 @@ function show_hints()
             end
         end  
     end
-
     if(dmm.measure.func == dmm.FUNC_DIODE) then
         table.insert(operatorHints, "- Make sure to select the suitable bias level for your DUT (10 uA - 10 mA)")
         table.insert(operatorHints, "- Specifications do not include errors from cable or connection resistance")
     end
-
     if(dmm.measure.func == dmm.FUNC_CAPACITANCE) then
         table.insert(operatorHints, "- Accuracies are specified for cable, channel, and other stray")
         table.insert(operatorHints, "   connector capacitance properly zeroed with the REL function.")
     end
-
-    if(dmm.measure.func == dmm.FUNC_AC_VOLTAGE) or (dmm.measure.func == dmm.FUNC_AC_CURRENT) then   
-        -- check for too high bandwidth (high-pass) settings 
-        if(dmm.measure.detectorbandwidth == dmm.DETECTBW_30HZ) or (dmm.measure.detectorbandwidth == dmm.DETECTBW_300HZ) then
-            if(AcvFrequency <= AcvFrequency_5HzTo10Hz) then 
-                -- bandwidth (highh pass filter) is certainly set too high
-                table.insert(operatorHints, "- Set the AC detector bandwidth to 3 Hz (lower than lowest signal frequency)!")
-            elseif (dmm.measure.detectorbandwidth == dmm.DETECTBW_300HZ) then
-                if(AcvFrequency == AcvFrequency_10HzTo20kHz) then 
-                    -- bandwidth (highh pass filter) is possibly set too high
-                    table.insert(operatorHints, "- If your signal frequency is <300 Hz, set the AC detector bandwidth")
-                    table.insert(operatorHints, "   to 30 Hz or 3 Hz (lower than lowest signal frequency component)!")
-                end
-            end
-            -- now check for unnecessary low bandwidth settings
-        elseif (dmm.measure.detectorbandwidth == dmm.DETECTBW_3HZ) or (dmm.measure.detectorbandwidth == dmm.DETECTBW_300HZ) then
-            if(AcvFrequency >= AcvFrequency_10HzTo20kHz) then -- bandwidth is set lower than necessary
-                table.insert(operatorHints, "- Set the AC detector bandwidth to the highest value below the")
-                table.insert(operatorHints, "    lowest frequency component of your signal!")
-            end
-        end
-    end
-
+    
     if (table.getn(operatorHints) == 0) then-- no hints available
     
         table.insert(operatorHints, "The instrument seems to be configured perfectly for best")
@@ -395,9 +353,9 @@ function getUncertaintyFunction()
     elseif func == dmm.FUNC_CAPACITANCE     then return getCapacitanceUncertainty
     elseif func == dmm.FUNC_DIODE           then return getDiodeUncertainty
     elseif func == dmm.FUNC_AC_VOLTAGE      then return getAcvUncertainty
-    elseif func == dmm.FUNC_AC_CURRENT      then return getAciUncertainty
---    elseif func == dmm.FUNC_ACV_FREQUENCY   then return getAcvFrequencyUncertainty
---    elseif func == dmm.FUNC_ACV_PERIOD      then return getAcvPeriodUncertainty
+--    elseif func == dmm.FUNC_AC_CURRENT      then bufferUnit = buffer.UNIT_AMP_AC
+--    elseif func == dmm.FUNC_ACV_FREQUENCY   then bufferUnit = buffer.UNIT_HERTZ
+--    elseif func == dmm.FUNC_ACV_PERIOD      then bufferUnit = buffer.UNIT_SECOND
 --    elseif func == dmm.FUNC_DCV_RATIO       then bufferUnit = buffer.UNIT_RATIO
     else return getNoUncertainty
     end
@@ -932,42 +890,6 @@ function getAcvUncertainty(reading, calInterval)
     end
 end
 
-function getAciUncertainty(reading, calInterval) -- AC current
--- TODO
-    local range = dmm.measure.range
-    if(range == 100E-6) then -- 100 uA              
-        if (AciFrequency == AciFrequency_3HzTo5Hz) or (AciFrequency == AciFrequency_5HzTo1kHz) then
-            return reading * 0.10/100 + range * 0.07/100
-        elseif (AciFrequency == AciFrequency_1kHzTo5kHz) or (AciFrequency == AciFrequency_5kHzTo10kHz) then
-            return reading * 0.15/100 + range * 0.07/100
-        end
-    elseif (range == 1E-3) or (range == 10E-3) or (range == 100E-3) then -- 1 mA - 100 mA ranges   
-        return reading * 0.10/100 + range * 0.04/100 -- independent of frequency        
-    elseif (range == 1.0) then -- 1 A range
-        if (AciFrequency == AciFrequency_3HzTo5Hz)  then
-            return reading * 0.30/100 + range * 0.04/100 -- footnote 24
-        elseif (AciFrequency == AciFrequency_5HzTo1kHz) then
-            return reading * 0.10/100 + range * 0.04/100
-        else -- >5 kHz
-            return reading * 0.15/100 + range * 0.06/100
-        end
-    elseif (range == 3.0) then -- 3 A range
-        if (AciFrequency == AciFrequency_3HzTo5Hz)  then
-            return reading * 0.35/100 + range * 0.06/100 -- footnote 24
-        else 
-            return reading * 0.15/100 + range * 0.06/100 
-        end
-    elseif (range == 10.0) then -- 10 A range
-        if (AciFrequency == AciFrequency_3HzTo5Hz)  then
-            return reading * 0.6/100 + range * 0.06/100 -- footnote 24
-        elseif (AciFrequency == AciFrequency_5HzTo1kHz) then
-            return reading * 0.4/100 + range * 0.06/100 
-        elseif (AciFrequency == AciFrequency_1kHzTo5kHz) or (AciFrequency == AciFrequency_5kHzTo10kHz) then
-            return reading * 1.0/100 + range * 0.07/100
-        end
-    end
-end
-
 function getNoUncertainty(reading, calInterval)
     return 0
 end
@@ -1032,11 +954,6 @@ AcvFrequency_20kHzTo50kHz        = 4
 AcvFrequency_50kHzTo100kHz       = 5
 AcvFrequency_100kHzTo300kHz      = 6
 
-AciFrequency_3HzTo5Hz            = 1
-AciFrequency_5HzTo1kHz           = 2
-AciFrequency_1kHzTo5kHz          = 3
-AciFrequency_5kHzTo10kHz         = 4
-
 -- define display settings
 absUncertaintyRoundingDigits = 2
 relUncertaintyRoundingDigits = 2
@@ -1045,7 +962,6 @@ errorLimitsRoundingDigits = 4
 -- Variables for global settings - set to defaults
 triggerReadingsFromApp = triggerReadingsFromApp_On --Trigger measuremnts regularly from the script. Can be switched off for remote operation
 AcvFrequency = AcvFrequency_10HzTo20kHz
-AciFrequency = AciFrequency_5HzTo1kHz
 
 -- Call opening functions and main()
 --reset()

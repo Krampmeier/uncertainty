@@ -1,40 +1,64 @@
 loadscript Uncertainty
--- $Title: Uncertainty
+-- $Title: Measurement Uncertainty
 -- $Product: DAQ6510, DMM6500
 -- $Tag: Measurement uncertainty, Tolerance, Error margin
--- $Description: Calculates measurement uncertainty
+-- $Description: Displays the measurement uncertainty of the currently measured value
 -- $Requires: v1.0.01f
 -- $Icon: uncertainty_icon
--- Last Updated: $Date: 2024-11-18
+-- Last Updated: $Date: 2024-10-19
 --[[
 Script: Uncertainty.tspa
 Written by: Johannes Raschke
 Based on Brad Odhner's Probe_Hold.tspa (Keithley Applications Engineering)
-
-For remote operation, the most interesting function is
-getUncertainty(): it returns the measurement uncertainty of the last measured value
-in defbuffer1, assumig it was taken with the current instrument stettings
-
-TODO: 
-* Hints in ACV mode trigger an error because there are no NPLC
-* Add hints for AC modes (e.g. frequency is set too low for bandwidth setting)
-* Stop passing calInterval as a paramter - it's global anyway...
-* Disable / clear error limit display if Overflow
-* Support more measurement functions of the 6500
-  (currently supported: DCV, DCI, RESISTANCE, 4W-Resistance)
-* add support for K7510 (I probably won't have the nerve to do that)
-
+`
 ***********************************************************
 *** Copyright 2024 Johannes Raschke                     ***
-*** All rights reserved.                                ***
-*** This source code is licensed under the CC BY 4.0    ***
-*** license.                                            ***
-*** See https://creativecommons.org/licenses/by/4.0/    ***
-*** Most important points: You are free to share and    ***
-*** adapt this work, but you must give appropriate      ***
-*** credit.                                             ***
+*** See www.tek.com/sample-license for licensing terms. ***
 ***********************************************************
+
+TODO: 
+* Alle Messfunktionen des K6500 unterstützen
+* Konfigurationsseite für AC-Frequenz einfügen
+* Berechnungsgrundlage der Unsicherheit als String zusammenbasteln
+* K7510 unterstützen
 ]]--
+
+function precheck() -- Checks that the script will work with the current settings
+    user_func = dmm.measure.func
+    if user_func == dmm.FUNC_NONE then 
+        local selection = display.prompt(display.BUTTONS_YESNO, 'Not compatible with Digitize functions, set function to DC Voltage and continue? You can change the function later.')
+        if selection == display.BUTTON_YES then 
+            user_func = dmm.FUNC_DC_VOLTAGE
+            return true 
+        else 
+            return false
+        end
+    elseif user_func == dmm.FUNC_TEMPERATURE then 
+        local selection = display.prompt(display.BUTTONS_YESNO, 'Not compatible with Temperature function, set function to DC Voltage and continue? You can change the function later.')
+        if selection == display.BUTTON_YES then 
+            user_func = dmm.FUNC_DC_VOLTAGE
+            return true 
+        else 
+            return false
+        end
+    elseif user_func == dmm.FUNC_CONTINUITY then 
+        local selection = display.prompt(display.BUTTONS_YESNO, 'Not compatible with Continuity function, set function to DC Voltage and continue? You can change the function later.')
+        if selection == display.BUTTON_YES then 
+            user_func = dmm.FUNC_DC_VOLTAGE
+            return true 
+        else 
+            return false
+        end    
+    elseif user_func == dmm.FUNC_DCV_RATIO then 
+        local selection = display.prompt(display.BUTTONS_YESNO, 'Not compatible with Ration function, set function to DC Voltage and continue? You can change the function later.')
+        if selection == display.BUTTON_YES then 
+            user_func = dmm.FUNC_DC_VOLTAGE
+            return true 
+        else 
+            return false
+        end    
+    end
+end -- precheck()
 
 function createMainScreen() -- Create grid lines on the swipe screen
 	-- Create grid line for each reading.
@@ -45,12 +69,12 @@ function createMainScreen() -- Create grid lines on the swipe screen
     
     -- Column lines
 	gridLines[1] = display.create(swipe_id, display.OBJ_LINE, 1, 5, 1, 200)
-	gridLines[2] = display.create(swipe_id, display.OBJ_LINE, 270, 5, 270, 200)
-    gridLines[3] = display.create(swipe_id, display.OBJ_LINE, 600, 5, 600, 200)
+	gridLines[2] = display.create(swipe_id, display.OBJ_LINE, 250, 5, 250, 200)
+    gridLines[3] = display.create(swipe_id, display.OBJ_LINE, 620, 5, 620, 200)
 	-- Row lines
-	gridLines[4] = display.create(swipe_id, display.OBJ_LINE, 1, 50, 600, 50)
-	gridLines[5] = display.create(swipe_id, display.OBJ_LINE, 1, 100, 600, 100)
-	gridLines[6] = display.create(swipe_id, display.OBJ_LINE, 1, 150, 600, 150)
+	gridLines[4] = display.create(swipe_id, display.OBJ_LINE, 1, 50, 620, 50)
+	gridLines[5] = display.create(swipe_id, display.OBJ_LINE, 1, 100, 620, 100)
+	gridLines[6] = display.create(swipe_id, display.OBJ_LINE, 1, 150, 620, 150)
 
 	for i = 1, table.getn(gridLines) do
 		display.setcolor(gridLines[i], 0x7f7f7f)
@@ -59,81 +83,52 @@ function createMainScreen() -- Create grid lines on the swipe screen
     -- Now Create objects on the swipe screen that aren't the grid lines
     displayItems[1] = display.create(swipe_id, display.OBJ_TEXT, 12, 35, "Abs. uncertainty", display.COLOR_MEASUREMENT, display.FONT_LARGE)
 	displayItems[2] = display.create(swipe_id, display.OBJ_TEXT, 12, 85,   "Rel. uncertainty", display.COLOR_MEASUREMENT, display.FONT_LARGE)
-	displayItems[3] = display.create(swipe_id, display.OBJ_TEXT, 12, 135,  "Lower error limit", display.COLOR_MEASUREMENT, display.FONT_LARGE)
-	displayItems[4] = display.create(swipe_id, display.OBJ_TEXT, 12, 185,  "Upper error limit", display.COLOR_MEASUREMENT, display.FONT_LARGE)
+	-- displayItems[3] = display.create(swipe_id, display.OBJ_TEXT, 12, 135,  formattedReadings[3], display.COLOR_MEASUREMENT, display.FONT_LARGE)
+	displayItems[4] = display.create(swipe_id, display.OBJ_TEXT, 12, 185,  "Cal. interval", display.COLOR_MEASUREMENT, display.FONT_LARGE)
 
-	displayItems[5] = display.create(swipe_id, display.OBJ_TEXT, 275, 35,  "---", display.COLOR_MEASUREMENT, display.FONT_LARGE)
-	displayItems[6] = display.create(swipe_id, display.OBJ_TEXT, 275, 85,  "---", display.COLOR_MEASUREMENT, display.FONT_LARGE)
-	displayItems[7] = display.create(swipe_id, display.OBJ_TEXT, 275, 135, "---", display.COLOR_MEASUREMENT, display.FONT_LARGE)
-	displayItems[8] = display.create(swipe_id, display.OBJ_TEXT, 275, 185, "---", display.COLOR_MEASUREMENT, display.FONT_LARGE)
+	displayItems[5] = display.create(swipe_id, display.OBJ_TEXT, 251, 35,  "---", display.COLOR_MEASUREMENT, display.FONT_LARGE)
+	displayItems[6] = display.create(swipe_id, display.OBJ_TEXT, 251, 85,  "---", display.COLOR_MEASUREMENT, display.FONT_LARGE)
+	-- displayItems[7] = display.create(swipe_id, display.OBJ_TEXT, 251, 135, formattedReadings[7], display.COLOR_MEASUREMENT, display.FONT_LARGE)
+	displayItems[8] = display.create(swipe_id, display.OBJ_TEXT, 251, 185, "---", display.COLOR_MEASUREMENT, display.FONT_LARGE)
 
     -- Settings button
-    settings_button_id = display.create(swipe_id, display.OBJ_BUTTON, 630, 10, "Settings")
+    settings_button_id = display.create(swipe_id, display.OBJ_BUTTON, 625, 20, "Settings")
     display.setevent(settings_button_id, display.EVENT_PRESS, "open_settings()")
 
     -- Hints button
-    hints_button_id = display.create(swipe_id, display.OBJ_BUTTON, 630, 78, "Hints")
+    hints_button_id = display.create(swipe_id, display.OBJ_BUTTON, 625, 100, "Hints")
     display.setevent(hints_button_id, display.EVENT_PRESS, "show_hints()")
-
-    -- About button
-    about_button_id = display.create(swipe_id, display.OBJ_BUTTON, 630, 144, "About")
-    display.setevent(about_button_id, display.EVENT_PRESS, "show_about()")
 
     screen_is_setup = 1 --if the script is restarted this will stop multiple swipe screens being created
 end
 
 function open_settings() -- Opens the settings screen
-    settings_id = display.create(display.ROOT, display.OBJ_SCREEN, 'Uncertainty Settings')
+    about_id = display.create(display.ROOT, display.OBJ_SCREEN, 'Uncertainty Settings')
 
-    local calibrationInterval_id = display.create(settings_id, display.OBJ_EDIT_OPTION, 200, 10, "Cal. interval", "Calibration interval", "24 h", "90 days", "1 year", "2 years")
-    display.setevent(calibrationInterval_id, display.EVENT_PRESS, "calIntervalSettingEvent(%value)")
+    local calibrationInterval_id = display.create(about_id, display.OBJ_EDIT_OPTION, 200, 10, "Cal. interval", "Calibration interval", "24 h", "90 days", "1 year", "2 years")
+    display.setevent(calibrationInterval_id, display.EVENT_PRESS, "cal_interval_setting_event(%value)")
     display.setvalue(calibrationInterval_id, calibrationInterval)
 
-    local triggerReadingsFromApp_id = display.create(settings_id, display.OBJ_EDIT_OPTION, 200, 90, "AutoTrigger", "App triggers cont. readings", "On", "Off") -- 1=On, 2=Off
-    display.setevent(triggerReadingsFromApp_id, display.EVENT_PRESS, "triggerReadingsFromAppEvent(%value)")
-    display.setvalue(triggerReadingsFromApp_id, triggerReadingsFromApp)
+	--local tolerance_id = display.create(settings_id, display.OBJ_EDIT_NUMBER, 200, 90, "Probe Hold Tolerance", "1 to 100 percent", display.NFORMAT_INTEGER, readTolerance*100, 1, 100, "%")
+	--display.setevent(tolerance_id, display.EVENT_PRESS, "tolerance_press_event(%value)")
 
-    local AcvFrequency_id = display.create(settings_id, display.OBJ_EDIT_OPTION, 200, 170, "ACV frequency", "Frequency for ACV", "3 Hz - 5 Hz",   -- 1
-                                                                                                                                "5 Hz - 10 Hz",   -- 2
-                                                                                                                                "10 Hz - 20 kHz", -- 3
-                                                                                                                                "20 - 50 kHz",    -- 4
-                                                                                                                                "50 - 100 kHz",   -- 5
-                                                                                                                                "100 - 300 kHz")  -- 6
-    display.setevent(AcvFrequency_id, display.EVENT_PRESS, "AcvFrequencyEvent(%value)")
-    display.setvalue(AcvFrequency_id, AcvFrequency)
+    --local threshold_id = display.create(settings_id, display.OBJ_EDIT_NUMBER, 200, 170, "Low Threshold", "Ignore readings below threshold", display.NFORMAT_USER, threshold, 0)
+    --display.setevent(threshold_id, display.EVENT_PRESS, "threshold_press_event(%value)")
 
-    local AciFrequency_id = display.create(settings_id, display.OBJ_EDIT_OPTION, 200, 250, "ACI frequency", "Frequency for ACI", "3 Hz - 5 Hz",     -- 1
-                                                                                                                                 "5 Hz - 1 kHz",    -- 2
-                                                                                                                                 "1 kHz - 5 kHz",   -- 3
-                                                                                                                                 "5 kHz - 10 kHz")  -- 4                                                                                                                         
-    display.setevent(AciFrequency_id, display.EVENT_PRESS, "AciFrequencyEvent(%value)")
-    display.setvalue(AciFrequency_id, AciFrequency)
+    --local repeat_id = display.create(settings_id, display.OBJ_EDIT_NUMBER, 200, 250, "Repeat Tolerance", "Repeat readings are ignored", display.NFORMAT_INTEGER, repeatTolerance*100, 1, 100, '%')
+    --display.setevent(repeat_id, display.EVENT_PRESS, "repeat_press_event(%value)")
 
-    -- note: add next button here
-
-    local exit_id = display.create(settings_id, display.OBJ_BUTTON, 350, 360, "Back")
+    local exit_id = display.create(about_id, display.OBJ_BUTTON, 350, 360, "Back")
     display.setevent(exit_id, display.EVENT_PRESS, "close_settings()")
 end
 
-function calIntervalSettingEvent(v) -- the selector passes 1 for 24h, 2 for 90 days, 3 for 1 year, 4 for 2 years
+function cal_interval_setting_event(v) -- the selector passes 1 for 24h, 2 for 90 days, 3 for 1 year, 4 for 2 years
 	calibrationInterval = v
-end
-
-function triggerReadingsFromAppEvent(v)
-    triggerReadingsFromApp = v
-end
-
-function AcvFrequencyEvent(v)
-    AcvFrequency = v
-end
-
-function AciFrequencyEvent(v)
-    AciFrequency = v
 end
 
 function close_settings() -- Closes the settings screen and goes back to swipe_id
     display.changescreen(display.SCREEN_HOME)
-    display.delete(settings_id)
+    display.delete(about_id)
     delay() -- Needed to allow change to swipe_id?
     display.changescreen(swipe_id)
     collectgarbage()
@@ -141,110 +136,38 @@ end
 
 function show_hints()
     hints_id = display.create(display.ROOT, display.OBJ_SCREEN, 'Uncertainty improvement hints')
-    local operatorHints = {} --create a new list
+    operatorHints = {} --create a new list
     
-
-    if((dmm.measure.func == dmm.FUNC_RESISTANCE) or (dmm.measure.func == dmm.FUNC_4W_RESISTANCE)
-        or (dmm.measure.func == dmm.FUNC_DC_CURRENT) or (dmm.measure.func == dmm.FUNC_DC_VOLTAGE)
-        or (dmm.measure.func == dmm.FUNC_TEMPERATURE) or (dmm.measure.func == dmm.FUNC_DCV_RATIO)) then -- all non-AC measurements
-        
-        if(dmm.measure.nplc < 1.0) then
-            table.insert(operatorHints, "- Use NPLC = 1 to 5 for best noise performance")
-        elseif(math.mod(dmm.measure.nplc,1) ~= 0) then -- NPLC > 1, but non-integer
-            table.insert(operatorHints, "- Set NPLC to a number without decimal places for better")
-            table.insert(operatorHints, "   AC line interference rejection")
-        end
-
-        if(dmm.measure.linesync == dmm.OFF) then
-            table.insert(operatorHints, "- Switch on Line Sync to reduce noise and improve")
-            table.insert(operatorHints, "   NMRR and CMRR (even at high NPLC settings)")
-        end
+    if(dmm.measure.nplc < 1.0) then
+        table.insert(operatorHints, "Use NPLC = 1 or a higher integer number to reduce noise")
     end
-    if((dmm.measure.func == dmm.FUNC_DC_VOLTAGE) and  (dmm.measure.range <= 10 ) and (dmm.measure.inputimpedance ~= dmm.IMPEDANCE_AUTO)) then
-        table.insert(operatorHints, "- Set the input impedance to AUTO for lower noise and higher")
-        table.insert(operatorHints, "   isolation under most circumstances (see ref manual)")
+    if(dmm.measure.linesync == dmm.OFF) then
+        table.insert(operatorHints, "Switch on Line Sync to reduce noise")
     end
-
-    if((dmm.measure.func == dmm.FUNC_RESISTANCE) or (dmm.measure.func == dmm.FUNC_4W_RESISTANCE)
-        or (dmm.measure.func == dmm.FUNC_DC_CURRENT) or (dmm.measure.func == dmm.FUNC_DC_VOLTAGE)
-        or (dmm.measure.func == dmm.FUNC_TEMPERATURE) or (dmm.measure.func == dmm.FUNC_DCV_RATIO)) 
-        or (dmm.measure.func == dmm.FUNC_DIODE)then
-        if(dmm.measure.autozero.enable == dmm.OFF) then
-            table.insert(operatorHints, "- Switch on Auto Zero to reduce offset drift")
-        end
+    if(dmm.measure.autozero.enable == dmm.OFF) then
+        table.insert(operatorHints, "Switch on Auto Zero to reduce offset drift")
     end
     if((dmm.measure.func == dmm.FUNC_RESISTANCE) and (dmm.measure.range <= 1000 )) then
-        table.insert(operatorHints, "- Consider using 4-wire resistance mode, especially")
-        table.insert(operatorHints, "   when measuring below 1 kOhm")        
-    end
-    if((dmm.measure.func == dmm.FUNC_RESISTANCE) and (dmm.measure.range <= 100000) and (dmm.measure.rel.enable == dmm.OFF)) then
-        table.insert(operatorHints, "- In 2-wire resistance mode, proper zeroing using")
-        table.insert(operatorHints, "   the rel function is required for rated accuracy")
+        table.insert(operatorHints, "Consider using 4-wire resistance mode")
     end
     if((dmm.measure.func == dmm.FUNC_4W_RESISTANCE) and (dmm.measure.offsetcompensation.enable == dmm.OCOMP_OFF)) then
-        table.insert(operatorHints, "- In 4-wire mode, Offset Compensation should be used")
-        table.insert(operatorHints, "   (adds noise but is required for rated uncertainty)")
+        table.insert(operatorHints, "Offset Compensation is required in 4-wire mode")
     end
     if((dmm.measure.func == dmm.FUNC_4W_RESISTANCE) and (dmm.measure.opendetector == dmm.ON) and (dmm.measure.range >= 10000)) then
-        table.insert(operatorHints, "- Open Lead detection decreases accuracy, especially")
-        table.insert(operatorHints, "   for 10 k to 1 M ranges")
+        table.insert(operatorHints, "Open Lead detection decreases accuracy, esp. for 10 k to 1 M ranges")
     end
     if((dmm.measure.func == dmm.FUNC_4W_RESISTANCE) or (dmm.measure.func == dmm.FUNC_RESISTANCE)) then
         if((dmm.measure.range == 1) or (dmm.measure.range == 10)) then
             if(dmm.measure.filter.enable == dmm.OFF) then
-                table.insert(operatorHints, "- 1 Ohm and 10 Ohm ranges require a 10-reading digital filter at")
-                table.insert(operatorHints, "   1 PLC or 2-reading digital filter at 5 PLC")
-            end
-        elseif((dmm.measure.range == 10000000) or (dmm.measure.range == 100000000)) then -- 10 or 100 MOhm 
-            if(dmm.measure.nplc < 1.0) then
-                table.insert(operatorHints, "- Noise in 10 MOhm and 100 MOhm ranges is only defined for")
-                table.insert(operatorHints, "   NPLC >= 1. These ranges are susceptible to AC interference!")
-            end
-        end  
-    end
-
-    if(dmm.measure.func == dmm.FUNC_DIODE) then
-        table.insert(operatorHints, "- Make sure to select the suitable bias level for your DUT (10 uA - 10 mA)")
-        table.insert(operatorHints, "- Specifications do not include errors from cable or connection resistance")
-    end
-
-    if(dmm.measure.func == dmm.FUNC_CAPACITANCE) then
-        table.insert(operatorHints, "- Accuracies are specified for cable, channel, and other stray")
-        table.insert(operatorHints, "   connector capacitance properly zeroed with the REL function.")
-    end
-
-    if(dmm.measure.func == dmm.FUNC_AC_VOLTAGE) or (dmm.measure.func == dmm.FUNC_AC_CURRENT) then   
-        -- check for too high bandwidth (high-pass) settings 
-        if(dmm.measure.detectorbandwidth == dmm.DETECTBW_30HZ) or (dmm.measure.detectorbandwidth == dmm.DETECTBW_300HZ) then
-            if(AcvFrequency <= AcvFrequency_5HzTo10Hz) then 
-                -- bandwidth (highh pass filter) is certainly set too high
-                table.insert(operatorHints, "- Set the AC detector bandwidth to 3 Hz (lower than lowest signal frequency)!")
-            elseif (dmm.measure.detectorbandwidth == dmm.DETECTBW_300HZ) then
-                if(AcvFrequency == AcvFrequency_10HzTo20kHz) then 
-                    -- bandwidth (highh pass filter) is possibly set too high
-                    table.insert(operatorHints, "- If your signal frequency is <300 Hz, set the AC detector bandwidth")
-                    table.insert(operatorHints, "   to 30 Hz or 3 Hz (lower than lowest signal frequency component)!")
-                end
-            end
-            -- now check for unnecessary low bandwidth settings
-        elseif (dmm.measure.detectorbandwidth == dmm.DETECTBW_3HZ) or (dmm.measure.detectorbandwidth == dmm.DETECTBW_300HZ) then
-            if(AcvFrequency >= AcvFrequency_10HzTo20kHz) then -- bandwidth is set lower than necessary
-                table.insert(operatorHints, "- Set the AC detector bandwidth to the highest value below the")
-                table.insert(operatorHints, "    lowest frequency component of your signal!")
+                table.insert(operatorHints, "1 Ohm and 10 Ohm ranges require a 10-reading digital filter at 1 PLC or 2-reading digital filter at 5 PLC")
             end
         end
     end
-
-    if (table.getn(operatorHints) == 0) then-- no hints available
     
-        table.insert(operatorHints, "The instrument seems to be configured perfectly for best")
-        table.insert(operatorHints, "measurement uncertainty!")
-    end
-
     for key,value in next, operatorHints do
-        display.create(hints_id, display.OBJ_TEXT, 12, 32*key, value, display.COLOR_MEASUREMENT, display.FONT_MEDIUM)
+        display.create(hints_id, display.OBJ_TEXT, 12, 35*key, value, display.COLOR_MEASUREMENT, display.FONT_MEDIUM)
     end
-    
+
     local exit_id = display.create(hints_id, display.OBJ_BUTTON, 350, 360, "Back")
     display.setevent(exit_id, display.EVENT_PRESS, "close_hints()")
 end
@@ -254,44 +177,13 @@ function close_hints() -- Closes the hints screen and goes back to swipe_id
     display.delete(hints_id)
     delay() -- Needed to allow change to swipe_id?
     display.changescreen(swipe_id)
-    -- operatorHints = {} have become local...
-    collectgarbage()
-end
-
-function show_about() -- Opens the about screen
-    about_id = display.create(display.ROOT, display.OBJ_SCREEN, 'About Uncertainty Calculator...')
-    local textLines = {} --create a new list
-    
-    table.insert(textLines, "An app for the Keithley 6500, written by Johannes Raschke,")
-    table.insert(textLines, "using information from Keithley SPEC-DMM6500 Rev. A / April 2018")
-    table.insert(textLines, "Based on Brad Odhner's Probe_Hold.tspa")
-    table.insert(textLines, "For remote operation, the most interesting function is")
-    table.insert(textLines, "getUncertainty(): it returns the measurement uncertainty")
-    table.insert(textLines, "of the last measured value in defbuffer1, assumig it was")
-    table.insert(textLines, "taken with the current instrument stettings.")
-    table.insert(textLines, "")
-    table.insert(textLines, "This script is licensed under the CC BY 4.0 - have fun!")
-    
-    for key,value in next, textLines do
-        display.create(about_id, display.OBJ_TEXT, 12, 32*key, value, display.COLOR_MEASUREMENT, display.FONT_MEDIUM)
-    end
-
-    local exit_id = display.create(about_id, display.OBJ_BUTTON, 350, 360, "Back")
-    display.setevent(exit_id, display.EVENT_PRESS, "close_about()")
-end
-
-function close_about() -- Closes the about screen and goes back to swipe_id
-    display.changescreen(display.SCREEN_HOME)
-    display.delete(about_id)
-    delay() -- Needed to allow change to swipe_id?
-    display.changescreen(swipe_id)
+    operatorHints = {}
     collectgarbage()
 end
 
 function getUnitSymbol()    
     local func = dmm.measure.func
         if     func == dmm.FUNC_DC_VOLTAGE      then unitString = "V"
-        elseif func == dmm.FUNC_DIODE       then unitString = "V"
         elseif func == dmm.FUNC_DC_CURRENT      then unitString = "A"
         elseif func == dmm.FUNC_RESISTANCE      then unitString = "\018"
         elseif func == dmm.FUNC_4W_RESISTANCE   then unitString = "\018"
@@ -305,40 +197,37 @@ function getUnitSymbol()
         return unitString
 end
 
---[[ Take a float value,
-  - convert it to max. 3 digits before the decimal point and
-  - round it to roundingDigits digits after the decimal point
-  - add a unit prefix (e.g. "k" for "kilo")
-  - return the resulting string
-  This does not add the unit itself!
---]]
-function prettyPrintValue(value, roundingDigits)
+-- take a float value,
+--  - convert it to max. 3 digits before the decimal point and
+--  - add a unit prefix (e.g. for "kilo")
+--  - return the resulting string
+-- This does not add the unit itself!
+function prettyPrintValue(value)
     local unitPrefix = ""
-    local absValue = math.abs(value)
-    if absValue < 1e-9 then
+    if value < 1e-9 then
         value = value * 1e12 -- pico-unit
         unitPrefix = "p"
-    elseif absValue < 1e-6 then
+    elseif value < 1e-6 then
         value = value * 1e9 -- nano-unit
         unitPrefix = "n"
-    elseif absValue < 1e-3 then
+    elseif value < 1e-3 then
         value = value * 1e6 -- micro-unit
         unitPrefix = "\020"
-    elseif absValue < 1.0 then
+    elseif value < 1.0 then
         value = value * 1e3 -- milli-unit
         unitPrefix = "m"
-    elseif absValue < 1e3 then
+    elseif value < 1e3 then
         value = value -- 1 ... 1000 --> no unit prefix
         unitPrefix = ""
-    elseif absValue < 1e6 then
+    elseif value < 1e6 then
         value = value / 1e3 -- kilo-unit
         unitPrefix = "k"
-    elseif absValue < 1e9 then
+    elseif value < 1e9 then
         value = value / 1e6 -- Mega-unit
         unitPrefix = "M"
     end
-    value = round(value, roundingDigits)
-    local prettyString = tostring(value) .. " " .. unitPrefix
+    value = round(value, absUncertaintyRoundingDigits)
+    prettyString = tostring(value) .. " " .. unitPrefix
     return prettyString
 end
 
@@ -352,6 +241,9 @@ function setup() -- Calls other init functions and creates the timers
         calibrationInterval = calibrationInterval_1year -- set the default
     end
     
+    -- Recover user's previous function
+    dmm.measure.func = user_func
+    
     --if screen_is_setup ~= 1 
     --then
          createMainScreen()
@@ -363,8 +255,6 @@ function setup() -- Calls other init functions and creates the timers
     
     display.changescreen(display.SCREEN_HOME) -- Go to the newly created screen
     display.changescreen(swipe_id)
-    
-    uncertainty_numberOfReadingsInBuffer = defbuffer1.n -- create variable and make sure one reading is taken on script startup
 
     takeReading()
 end
@@ -375,12 +265,8 @@ function check_valid(reading) -- Takes the most recent reading and verifies it's
 end
 
 function takeReading() -- take a reading and display the uncertainty
-    if(triggerReadingsFromApp == triggerReadingsFromApp_On) then -- 1 for "On", 2 for "Off"
-        if((uncertainty_numberOfReadingsInBuffer == defbuffer1.n) or (defbuffer1.n == 0)) then -- no measurement was triggered from outside of this script?
-            dmm.measure.read(defbuffer1)
-            uncertainty_numberOfReadingsInBuffer = defbuffer1.n -- remember the amount of values in the buffer so we can detect changes next time
-        end
-    end
+    dmm.measure.read(defbuffer1) -- disabled because the operator can set the meter to continuous mode him/herself
+    --trigger.continuous = trigger.CONT_RESTART
     update_uncertainties()
 end
 
@@ -392,34 +278,30 @@ function getUncertaintyFunction()
     elseif func == dmm.FUNC_DC_CURRENT      then return getDciUncertainty
     elseif func == dmm.FUNC_RESISTANCE      then return getResistanceUncertainty
     elseif func == dmm.FUNC_4W_RESISTANCE   then return getResistanceUncertainty
-    elseif func == dmm.FUNC_CAPACITANCE     then return getCapacitanceUncertainty
-    elseif func == dmm.FUNC_DIODE           then return getDiodeUncertainty
-    elseif func == dmm.FUNC_AC_VOLTAGE      then return getAcvUncertainty
-    elseif func == dmm.FUNC_AC_CURRENT      then return getAciUncertainty
---    elseif func == dmm.FUNC_ACV_FREQUENCY   then return getAcvFrequencyUncertainty
---    elseif func == dmm.FUNC_ACV_PERIOD      then return getAcvPeriodUncertainty
+--    elseif func == dmm.FUNC_CAPACITANCE     then bufferUnit = buffer.UNIT_FARAD
+--    elseif func == dmm.FUNC_AC_VOLTAGE      then bufferUnit = buffer.UNIT_VOLT_AC
+--    elseif func == dmm.FUNC_AC_CURRENT      then bufferUnit = buffer.UNIT_AMP_AC
+--    elseif func == dmm.FUNC_ACV_FREQUENCY   then bufferUnit = buffer.UNIT_HERTZ
+--    elseif func == dmm.FUNC_ACV_PERIOD      then bufferUnit = buffer.UNIT_SECOND
 --    elseif func == dmm.FUNC_DCV_RATIO       then bufferUnit = buffer.UNIT_RATIO
     else return getNoUncertainty
     end
  end
 
 
-function getDcvUncertainty(reading, calInterval)
-    local range = dmm.measure.range
+function getDcvUncertainty(reading, range, calInterval)
     local baseUncertainty = getDcvBaseUncertainty(reading, range, calInterval)
     local additionalUncertainty = getDcvAdditionalUncertainty(reading, range, calInterval)
     return baseUncertainty + additionalUncertainty
 end
 
-function getDciUncertainty(reading, calInterval)
-    local range = dmm.measure.range
+function getDciUncertainty(reading, range, calInterval)
     local baseUncertainty = getDciBaseUncertainty(reading, range, calInterval)
     local additionalUncertainty = getDciAdditionalUncertainty(reading, range, calInterval)
     return baseUncertainty + additionalUncertainty
 end
 
-function getResistanceUncertainty(reading, calInterval)
-    local range = dmm.measure.range
+function getResistanceUncertainty(reading, range, calInterval)
     local baseUncertainty = getResistanceBaseUncertainty(reading, range, calInterval)
     local additionalUncertainty = getResistanceAdditionalUncertainty(reading, range, calInterval)
     return baseUncertainty + additionalUncertainty
@@ -433,7 +315,7 @@ function getDcvBaseUncertainty(reading, range, calInterval)    -- return measure
             uncertOfReading = 0.0015/100
             uncertOfRange = 0.0030/100
         elseif range == 1 then
-            uncertOfReading = 0.0015/100
+            uncertOfReading = 0.0015/100 
             uncertOfRange = 0.0006/100
         elseif range == 10 then
             uncertOfReading = 0.0010/100
@@ -510,7 +392,6 @@ function getDcvAdditionalUncertainty(reading, range, calInterval)
     local autoZeroState = dmm.measure.autozero.enable -- dmm.OFF or dmm.ON
 
     -- handle MEASUREMENT NOISE CHARACTERISTICS
-    -- Attention: The spcification lists RMS noise, not peak noise. We do the conversion at the end...
     if(nplc < 0.01) then -- spec sheet specifies 0.0005 PLC, I assume the values are valid from 0.0005 - 0.01 PLC
         noiseOfRange = 0.00500/100
         noiseFixedValue = 40e-6 -- 40 uV
@@ -521,24 +402,19 @@ function getDcvAdditionalUncertainty(reading, range, calInterval)
         noiseOfRange = 0.00015/100
         if(lineSyncState == dmm.OFF) then
             noiseFixedValue = 4e-6 -- 4 uV
-
+            
         else -- line sync on
             noiseFixedValue = 1e-6 -- 1 uV
         end
     -- no additional noise penalty for NPLC >= 1
     end
-
-    -- convert RMS noise spec to peak noise spec
-    -- this is an approximation though, as we don't know the noise spectrum characteristics
-    noiseOfRange = noiseOfRange * 3
-    noiseFixedValue = noiseFixedValue * 3
-
+    
     -- handle "autozero off" penalty
     if(autoZeroState == dmm.OFF) then
         noAutoZeroUncertOfRange = 0.0010/100 -- assuming worst specified case: within ±5 °C and ≤ 60 minutes since last autozero
         noAutoZeroUncertFixedValue = 10.0e-6 -- 10 uV        
     end
-    return range * (noiseOfRange + noAutoZeroUncertOfRange) + noiseFixedValue + noAutoZeroUncertFixedValue
+    return range * (noiseOfRange + noAutoZeroUncertOfRange) + noiseFixedValue + noAutoZeroUncertFixedValue    
 end
 
 function getDciBaseUncertainty(reading, range, calInterval) -- return measurement uncertainty in A
@@ -646,11 +522,6 @@ function getDciAdditionalUncertainty(reading, range, calInterval)
     -- no additional noise penalty for NPLC >= 1
     end
 
-    -- convert RMS noise spec to peak noise spec
-    -- this is an approximation though, as we don't know the noise spectrum characteristics
-    noiseOfRange = noiseOfRange * 3
-    noiseFixedValue = noiseFixedValue * 3
-
     -- handle "autozero off" penalty
     if(autoZeroState == dmm.OFF) then
         noAutoZeroUncertOfRange = 0.015/100 -- assuming worst specified case: within ±5 °C and ≤ 60 minutes since last autozero
@@ -660,6 +531,8 @@ function getDciAdditionalUncertainty(reading, range, calInterval)
 end
 
 function getResistanceBaseUncertainty(reading, range, calInterval) -- return measurement uncertainty in A
+    local uncertOfReading = 0
+    local uncertOfRange = 0
     if(calInterval == calibrationInterval_24h) then
         if range == 1 then
             return reading * 0.0080/100 + range * 0.0200/100
@@ -760,7 +633,8 @@ function getResistanceAdditionalUncertainty(reading, range, calInterval)
 
     -- handle MEASUREMENT NOISE CHARACTERISTICS
     if(range <= 1000000) then -- RESISTANCE MEASUREMENT NOISE CHARACTERISTICS apply for 1 Ω through 1 MΩ ranges only
-        if(kelvinConnectionsState == dmm.OFF) then -- we are in 2-wire resistance mode  
+        if(kelvinConnectionsState == dmm.OFF) then -- we are in 2-wire resistance mode
+            
             if(nplc < 0.01) then -- spec sheet specifies 0.0005 PLC, I assume the values are valid from 0.0005 - 0.01 PLC
                 noiseOfRange = 0.00650/100
                 noiseFixedValue = 3.5E-3 -- 3.5 mOhm
@@ -775,8 +649,9 @@ function getResistanceAdditionalUncertainty(reading, range, calInterval)
                     noiseOfRange = 0.00015/100
                     noiseFixedValue = 0.1E-3 -- 0.1 mOhm
                 end
-            -- no additional noise penalty for NPLC >= 1            
-            end
+            -- no additional noise penalty for NPLC >= 1
+            TwoWireModeUncertFixedValue = 0.1 -- For 2-wire, use relative offset and add 100 mΩ of additional uncertainty
+            end            
         elseif(kelvinConnectionsState == dmm.ON) then -- we are in 4-wire resistance mode
             if (dmm.OCOMP_OFF == dmm.measure.offsetcompensation.enable) then -- 4-wire mode, but offset compensation off?    
                 if(nplc < 0.01) then -- spec sheet specifies 0.0005 PLC, I assume the values are valid from 0.0005 - 0.01 PLC
@@ -820,188 +695,59 @@ function getResistanceAdditionalUncertainty(reading, range, calInterval)
             noiseFixedValue = noiseFixedValue * 5
         end
     end
-
-    -- convert RMS noise spec to peak noise spec
-    -- this is an approximation though, as we don't know the noise spectrum characteristics
-    noiseOfRange = noiseOfRange * 3
-    noiseFixedValue = noiseFixedValue * 3
-
     -- handle "autozero off" penalty
     if(autoZeroState == dmm.OFF) then -- assuming worst specified case: within ±5 °C and ≤ 60 minutes since last autozero
         noAutoZeroUncertOfRange = 0.0020/100 
         noAutoZeroUncertFixedValue = 10e-3 -- 10 mOhm
     end
 
-    if kelvinConnectionsState == dmm.OFF then -- we are in 2-wire resistance mode?
-        TwoWireModeUncertFixedValue = 0.1 -- 100 mOhm penalty
-    end
+--    if kelvinConnectionsState == dmm.OFF then -- we are in 2-wire resistance mode?
+--        TwoWireModeUncertFixedValue = 0.1 -- 100 mOhm penalty
+--    else -- 4-wire mode
+--        if (dmm.OCOMP_OFF == dmm.measure.offsetcompensation.enable) then -- 4-wire mode, but offset compensation off?
+--        end
+--    end
 
     return range * (noiseOfRange + noAutoZeroUncertOfRange) + noiseFixedValue + noAutoZeroUncertFixedValue + TwoWireModeUncertFixedValue
 end
 
-function getCapacitanceUncertainty(reading, calInterval)
-    -- note: There is only a 2-year accuracy spec for capacitance measurement!
-    local range = dmm.measure.range
-    if range == 1e-9 then -- 1 nF
-        return reading * 0.80/100 + range * 0.5/100
-    else
-        return reading * 0.40/100 + range * 0.1/100 -- 10 nF to 100 uF ranges all have the same spec!    
-    end
-end
-
-function getDiodeUncertainty(reading, calInterval)
-    -- note: There is only a 2-year accuracy spec for diode measurement!
-    local biasLevel = dmm.measure.bias.level
-    if biasLevel == 1e-5 then -- 10 uA
-        return reading * 0.0045/100 + 60e-6
-    elseif biasLevel == 0.0001 then -- 100 uA
-        return reading * 0.0045/100 + 80e-6
-    elseif biasLevel == 0.001 then -- 1 mA
-        return reading * 0.0045/100 + 170e-6
-    else -- 10 mA
-        return reading * 0.0045/100 + 1.1e-3
-    end
-end
-
-function getAcvUncertainty(reading, calInterval)
-    -- the relative specification of the calibration cycle does not depend on the range,
-    -- but only on the calibration cycle!
-    local range = dmm.measure.range
-    if calibrationInterval == calibrationInterval_24h then
-        if AcvFrequency == AcvFrequency_3HzTo5Hz then
-            return reading * 1.00/100 + range * 0.02/100
-        elseif AcvFrequency == AcvFrequency_5HzTo10Hz then
-            return reading * 0.35/100 + range * 0.02/100
-        elseif AcvFrequency == AcvFrequency_10HzTo20kHz then
-            return reading * 0.04/100 + range * 0.02/100
-        elseif AcvFrequency == AcvFrequency_20kHzTo50kHz then
-            return reading * 0.10/100 + range * 0.04/100
-        elseif AcvFrequency == AcvFrequency_50kHzTo100kHz then
-            return reading * 0.55/100 + range * 0.08/100
-        elseif AcvFrequency == AcvFrequency_100kHzTo300kHz then
-            return reading * 4.00/100 + range * 0.5/100
-        else return 0 -- illegal frequency
-        end
-    elseif calibrationInterval == calibrationInterval_90days then
-        if AcvFrequency == AcvFrequency_3HzTo5Hz then
-            return reading * 1.00/100 + range * 0.03/100
-        elseif AcvFrequency == AcvFrequency_5HzTo10Hz then
-            return reading * 0.35/100 + range * 0.03/100
-        elseif AcvFrequency == AcvFrequency_10HzTo20kHz then
-            return reading * 0.05/100 + range * 0.03/100
-        elseif AcvFrequency == AcvFrequency_20kHzTo50kHz then
-            return reading * 0.11/100 + range * 0.05/100
-        elseif AcvFrequency == AcvFrequency_50kHzTo100kHz then
-            return reading * 0.60/100 + range * 0.08/100
-        elseif AcvFrequency == AcvFrequency_100kHzTo300kHz then
-            return reading * 4.00/100 + range * 0.5/100
-        else return 0 -- illegal frequency
-        end
-    elseif calibrationInterval == calibrationInterval_1year then
-        if AcvFrequency == AcvFrequency_3HzTo5Hz then
-            return reading * 1.00/100 + range * 0.03/100
-        elseif AcvFrequency == AcvFrequency_5HzTo10Hz then
-            return reading * 0.35/100 + range * 0.03/100
-        elseif AcvFrequency == AcvFrequency_10HzTo20kHz then
-            return reading * 0.06/100 + range * 0.03/100
-        elseif AcvFrequency == AcvFrequency_20kHzTo50kHz then
-            return reading * 0.12/100 + range * 0.05/100
-        elseif AcvFrequency == AcvFrequency_50kHzTo100kHz then
-            return reading * 0.60/100 + range * 0.08/100
-        elseif AcvFrequency == AcvFrequency_100kHzTo300kHz then
-            return reading * 4.00/100 + range * 0.5/100
-        else return 0 -- illegal frequency
-        end
-    elseif calibrationInterval == calibrationInterval_2years then
-        if AcvFrequency == AcvFrequency_3HzTo5Hz then
-            return reading * 1.00/100 + range * 0.03/100
-        elseif AcvFrequency == AcvFrequency_5HzTo10Hz then
-            return reading * 0.35/100 + range * 0.03/100
-        elseif AcvFrequency == AcvFrequency_10HzTo20kHz then
-            return reading * 0.07/100 + range * 0.03/100
-        elseif AcvFrequency == AcvFrequency_20kHzTo50kHz then
-            return reading * 0.13/100 + range * 0.05/100
-        elseif AcvFrequency == AcvFrequency_50kHzTo100kHz then
-            return reading * 0.60/100 + range * 0.08/100
-        elseif AcvFrequency == AcvFrequency_100kHzTo300kHz then
-            return reading * 4.00/100 + range * 0.5/100
-        else return 0 -- illegal frequency
-        end
-    else
-        return 0 -- illegal cal interval
-    end
-end
-
-function getAciUncertainty(reading, calInterval) -- AC current
--- TODO
-    local range = dmm.measure.range
-    if(range == 100E-6) then -- 100 uA              
-        if (AciFrequency == AciFrequency_3HzTo5Hz) or (AciFrequency == AciFrequency_5HzTo1kHz) then
-            return reading * 0.10/100 + range * 0.07/100
-        elseif (AciFrequency == AciFrequency_1kHzTo5kHz) or (AciFrequency == AciFrequency_5kHzTo10kHz) then
-            return reading * 0.15/100 + range * 0.07/100
-        end
-    elseif (range == 1E-3) or (range == 10E-3) or (range == 100E-3) then -- 1 mA - 100 mA ranges   
-        return reading * 0.10/100 + range * 0.04/100 -- independent of frequency        
-    elseif (range == 1.0) then -- 1 A range
-        if (AciFrequency == AciFrequency_3HzTo5Hz)  then
-            return reading * 0.30/100 + range * 0.04/100 -- footnote 24
-        elseif (AciFrequency == AciFrequency_5HzTo1kHz) then
-            return reading * 0.10/100 + range * 0.04/100
-        else -- >5 kHz
-            return reading * 0.15/100 + range * 0.06/100
-        end
-    elseif (range == 3.0) then -- 3 A range
-        if (AciFrequency == AciFrequency_3HzTo5Hz)  then
-            return reading * 0.35/100 + range * 0.06/100 -- footnote 24
-        else 
-            return reading * 0.15/100 + range * 0.06/100 
-        end
-    elseif (range == 10.0) then -- 10 A range
-        if (AciFrequency == AciFrequency_3HzTo5Hz)  then
-            return reading * 0.6/100 + range * 0.06/100 -- footnote 24
-        elseif (AciFrequency == AciFrequency_5HzTo1kHz) then
-            return reading * 0.4/100 + range * 0.06/100 
-        elseif (AciFrequency == AciFrequency_1kHzTo5kHz) or (AciFrequency == AciFrequency_5kHzTo10kHz) then
-            return reading * 1.0/100 + range * 0.07/100
-        end
-    end
-end
-
-function getNoUncertainty(reading, calInterval)
+function getNoUncertainty(reading, range, calInterval)
     return 0
 end
 
-function getUncertainty() --get the measurement uncertainty of the last measured value in defbuffer1, assumig it was taken with the current instrument stettings
-    if(defbuffer1.n ~= 0) then -- make sure there is a reading in the buffer    
-        local reading = defbuffer1[defbuffer1.endindex] -- the last reading that was taken by the meter
-        
-        if (check_valid(reading) == false) then
-            return nil
-        end    
-        local uncertaintyFunction = getUncertaintyFunction();
-        return uncertaintyFunction(math.abs(reading), calibrationInterval)
-    end
+function getUncertainty()
+    local reading = defbuffer1[defbuffer1.endindex] -- the last reading that was taken by the meter
+    local range = dmm.measure.range
+
+    if (check_valid(reading) == false) then
+        return nil
+    end    
+    local uncertaintyFunction = getUncertaintyFunction();
+    return uncertaintyFunction(math.abs(reading), range, calibrationInterval)
 end
 
 function update_uncertainties() -- Updates the number display
-    if(defbuffer1.n ~= 0) then -- make sure there is a reading in the buffer
-        local reading = defbuffer1[defbuffer1.endindex] -- the last reading that was taken by the meter   
-        local uncertainty = getUncertainty()
-        if (uncertainty==nil) then 
-            display.settext(displayItems[5], "---")
-            display.settext(displayItems[6], "---")
+    local reading = defbuffer1[defbuffer1.endindex] -- the last reading that was taken by the meter   
+    local uncertainty = getUncertainty()
+    if (uncertainty==nil) then 
+        display.settext(displayItems[5], "---")
+        display.settext(displayItems[6], "---")
+    else
+        display.settext(displayItems[5], prettyPrintValue(uncertainty) .. getUnitSymbol()) -- absolute uncertainty
+        if(reading ~= 0.0) then
+            display.settext(displayItems[6], tostring(round(uncertainty/reading*1e6, relUncertaintyRoundingDigits)) .. " " .. "ppm") -- relative uncertainty
         else
-            display.settext(displayItems[5], prettyPrintValue(uncertainty, absUncertaintyRoundingDigits) .. getUnitSymbol()) -- absolute uncertainty
-            if(reading ~= 0.0) then
-                display.settext(displayItems[6], tostring(round(uncertainty/math.abs(reading)*1e6, relUncertaintyRoundingDigits)) .. " " .. "ppm") -- relative uncertainty
-            else
-                display.settext(displayItems[6], "--- " .. "ppm") -- relative uncertainty
-            end
-            display.settext(displayItems[7], prettyPrintValue(reading - uncertainty, errorLimitsRoundingDigits) .. getUnitSymbol())
-            display.settext(displayItems[8], prettyPrintValue(reading + uncertainty, errorLimitsRoundingDigits) .. getUnitSymbol())
+            display.settext(displayItems[6], "--- " .. "ppm") -- relative uncertainty
         end
     end
+      
+    --display.settext(displayItems[2], "Updated!")
+    -- display.settext(displayItems[3], formattedReadings[3])
+    -- display.settext(displayItems[4], formattedReadings[4])
+    -- display.settext(displayItems[5], formattedReadings[5])
+    -- display.settext(displayItems[6], formattedReadings[6])
+    -- display.settext(displayItems[7], formattedReadings[7])
+    -- display.settext(displayItems[8], formattedReadings[8])
 end
 
 function round(vaule, digits)
@@ -1016,43 +762,27 @@ function main() -- Does nothing in this App, here for posterity
 end
 
 --------------------------------- Script starts here ---------------------------------------
+-- Global Settings
+
 -- define values to use for calibrationInterval (like an enum)
 calibrationInterval_24h    = 1
 calibrationInterval_90days = 2
 calibrationInterval_1year  = 3
 calibrationInterval_2years = 4
 
-triggerReadingsFromApp_On = 1
-triggerReadingsFromApp_Off = 2
-
-AcvFrequency_3HzTo5Hz            = 1
-AcvFrequency_5HzTo10Hz           = 2
-AcvFrequency_10HzTo20kHz         = 3
-AcvFrequency_20kHzTo50kHz        = 4
-AcvFrequency_50kHzTo100kHz       = 5
-AcvFrequency_100kHzTo300kHz      = 6
-
-AciFrequency_3HzTo5Hz            = 1
-AciFrequency_5HzTo1kHz           = 2
-AciFrequency_1kHzTo5kHz          = 3
-AciFrequency_5kHzTo10kHz         = 4
-
 -- define display settings
 absUncertaintyRoundingDigits = 2
 relUncertaintyRoundingDigits = 2
-errorLimitsRoundingDigits = 4
-
--- Variables for global settings - set to defaults
-triggerReadingsFromApp = triggerReadingsFromApp_On --Trigger measuremnts regularly from the script. Can be switched off for remote operation
-AcvFrequency = AcvFrequency_10HzTo20kHz
-AciFrequency = AciFrequency_5HzTo1kHz
 
 -- Call opening functions and main()
---reset()
-collectgarbage() -- Built-in function
-setup()
-main()
-
+local continue = precheck()
+if continue == false then exit()
+else
+    --reset()
+    collectgarbage() -- Built-in function
+    setup()
+    main()
+end
 
 endscript
 

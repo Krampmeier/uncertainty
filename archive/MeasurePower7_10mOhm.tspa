@@ -1,0 +1,211 @@
+  --[[
+Script: MeasurePower an other things too.tsp
+Written by: Mike Green
+]]--
+
+
+function screen_setup()
+
+    swipe_id = display.create(display.SCREEN_HOME, display.OBJ_SWIPE, 'Extra Data')
+
+local gridLines = {}
+	-- Column lines
+	gridLines[1] = display.create(swipe_id, display.OBJ_LINE, 1, 5, 1, 200)
+	gridLines[2] = display.create(swipe_id, display.OBJ_LINE, 310, 5, 310, 200)
+    gridLines[3] = display.create(swipe_id, display.OBJ_LINE, 530, 5, 530, 200)
+	-- Row lines
+	gridLines[4] = display.create(swipe_id, display.OBJ_LINE, 1, 50, 530, 50)
+	gridLines[5] = display.create(swipe_id, display.OBJ_LINE, 1, 100, 530, 100)
+	gridLines[6] = display.create(swipe_id, display.OBJ_LINE, 1, 150, 530, 150)
+
+	for i = 1, table.getn(gridLines) do
+		display.setcolor(gridLines[i], 0xff0000)
+		
+	end
+	
+	--set titles and units
+	display.create(swipe_id, display.OBJ_TEXT, 12, 35,   "DUT Voltage"  , display.COLOR_MEASUREMENT, display.FONT_LARGE)
+	display.create(swipe_id, display.OBJ_TEXT, 12, 85,   "Shunt Voltage", display.COLOR_MEASUREMENT, display.FONT_LARGE)
+	display.create(swipe_id, display.OBJ_TEXT, 12, 135,  "Shunt Power"  , display.COLOR_MEASUREMENT, display.FONT_LARGE)
+	display.create(swipe_id, display.OBJ_TEXT, 12, 185,  "Current"      , display.COLOR_MEASUREMENT, display.FONT_LARGE)
+	
+	display.create(swipe_id, display.OBJ_TEXT, 440, 35,  "Volts", 0xffffff, display.FONT_MEDIUM)
+	display.create(swipe_id, display.OBJ_TEXT, 440, 85,  "Volts", 0xffffff, display.FONT_MEDIUM)
+	display.create(swipe_id, display.OBJ_TEXT, 440, 135, "Watts", 0xffffff, display.FONT_MEDIUM)
+	display.create(swipe_id, display.OBJ_TEXT, 440, 185, "Amps" , 0xffffff, display.FONT_MEDIUM)
+	
+	--Start button
+	local settings_button_id = display.create(swipe_id, display.OBJ_BUTTON, 625, 20, "Start")
+    display.setevent(settings_button_id, display.EVENT_PRESS, "main()")
+    
+    -- Options button
+    local settings_button_id = display.create(swipe_id, display.OBJ_BUTTON, 625, 135, "Options")
+    display.setevent(settings_button_id, display.EVENT_PRESS, "open_settings()")
+    
+    --setting position for data display
+    measure_input = display.create(swipe_id, display.OBJ_TEXT,320,35, data1  , 0xffffff, display.FONT_LARGE)
+    measure_vsense = display.create(swipe_id, display.OBJ_TEXT,320,85, data2  , 0xffffff, display.FONT_LARGE)
+    measure_shuntw = display.create(swipe_id, display.OBJ_TEXT,320,135, data3  , 0xffffff, display.FONT_LARGE)
+    measure_current = display.create(swipe_id, display.OBJ_TEXT,320,185, data4  , 0xffffff, display.FONT_LARGE)
+    
+    
+    screen_is_setup = 1 --if the script is restarted this will stop multiple swipe screens being created
+end
+    
+    
+function setup() --sets up first run values
+    shuntValue = display.input.number("Shunt Resistor value",display.NFORMAT_DECIMAL, shuntValue, 0, 1000)
+
+    shuntDiss = display.input.number("Shunt Resistor Rating (Watts)",display.NFORMAT_DECIMAL, shuntDiss, 0, 1000)
+
+    readings = display.input.number("Number of Readings to be taken",display.NFORMAT_INTEGER, readings, 10, 100000)
+
+    timeBetween = display.input.number("Delay Between Readings Taken",display.NFORMAT_DECIMAL, timeBetween, 0, 100)
+
+    display.changescreen(swipe_id)
+end   
+    
+    
+function setup_shunt() --sets up changes from first run
+    shuntValue = display.input.number("Shunt Resistor value",display.NFORMAT_DECIMAL, shuntValue, 0, 1000)
+    display.changescreen(swipe_id)
+
+    shuntDiss = display.input.number("Shunt Resistor Rating (Watts)",display.NFORMAT_DECIMAL, shuntDiss, 0, 1000)
+
+    display.changescreen(swipe_id)
+end
+
+
+
+function setup_readings()  --sets up changes from first run
+    readings = display.input.number("Number of Readings to be taken",display.NFORMAT_INTEGER, readings, 10, 100000)
+
+    display.changescreen(swipe_id) 
+ 
+end
+
+function setup_delay()  --sets up changes from first run
+    timeBetween = display.input.number("Delay Between Readings Taken",display.NFORMAT_DECIMAL, timeBetween , 0, 100)
+
+    display.changescreen(swipe_id) 
+ 
+end
+
+
+function main()  --timeBetween = 0.1 --seconds
+    readingBuffer = buffer.make(readings, buffer.STYLE_FULL) 
+    DUTBuffer = buffer.make(readings, buffer.STYLE_WRITABLE_FULL) 
+    buffer.write.format(DUTBuffer, buffer.UNIT_VOLT, buffer.DIGITS_5_5, buffer.UNIT_AMP, buffer.DIGITS_5_5)
+     
+    RSenseBuffer = buffer.make(readings, buffer.STYLE_WRITABLE_FULL) 
+    buffer.write.format(RSenseBuffer, buffer.UNIT_VOLT, buffer.DIGITS_5_5, buffer.UNIT_AMP, buffer.DIGITS_5_5)
+    
+    powerBuffer = buffer.make(readings, buffer.STYLE_WRITABLE_FULL) 
+    buffer.write.format(powerBuffer, buffer.UNIT_WATT, buffer.DIGITS_5_5, buffer.UNIT_WATT, buffer.DIGITS_5_5)
+     
+    dmm.measure.func = dmm.FUNC_DCV_RATIO
+    dmm.measure.autorange = dmm.ON
+    dmm.measure.filter.enable = dmm.ON
+    dmm.measure.nplc = 1 --MEASURE NPLS
+    main_run()
+end
+
+function main_run()
+for i = 1,readings do
+    ratio = dmm.measure.read(readingBuffer)
+    vsense = readingBuffer.extravalues[i] --voltage across shunt
+    seconds = readingBuffer.seconds[i]
+    fractional = readingBuffer.fractionalseconds[i]
+    current = vsense / shuntValue --calculates current
+    voltage = ratio * vsense --calculates voltage across DUT
+    power = voltage * current --calculates power in DUT
+    shuntWatt = vsense * vsense / shuntValue --calculates power dissipated in shunt
+    buffer.write.reading(powerBuffer, power, shuntWatt, seconds, fractional, buffer.STAT_TERMINAL)
+    buffer.write.reading(DUTBuffer, voltage, current, seconds, fractional, buffer.STAT_TERMINAL)
+    buffer.write.reading(RSenseBuffer, vsense, current, seconds, fractional, buffer.STAT_TERMINAL)
+
+--checks if inputs are reasonable--     
+if vsense * vsense / shuntValue < 0.0001 then
+    display.settext(measure_input, "LOW" )
+    display.settext(measure_vsense, "LOW")
+    display.settext(measure_shuntw, "LOW" )
+    display.settext(measure_current, "LOW" )
+    
+    display.setcolor( measure_input, 0xff0000)
+    display.setcolor( measure_vsense, 0xff0000)
+    display.setcolor( measure_shuntw, 0xff0000)
+    display.setcolor( measure_current, 0xff0000);beeper.beep(.05, 2400)
+    else
+       
+    display.setcolor( measure_input, 0xffffff)
+    display.setcolor( measure_vsense, 0xffffff)
+    display.setcolor( measure_shuntw, 0xffffff)
+    display.setcolor( measure_current, 0xffffff)
+    
+    --puts results into strings     
+    vinput = tostring(voltage) 
+    vsense = tostring(readingBuffer.extravalues[i]) 
+    ShuntW = tostring(shuntWatt)
+    current = tostring(current)
+
+
+--checks if shunt is being overloaded
+if shuntWatt>shuntDiss then display.setcolor( measure_shuntw, 0xff0000);beeper.beep(.03, 2400)
+else display.setcolor( measure_shuntw, 0xffffff) 
+end
+
+--extracts strings of required length
+ data1=(string.sub(vinput,1,6))
+  data2=(string.sub(vsense,1,6))
+   data3=(string.sub(ShuntW,1,6))
+    data4=(string.sub(current,1,6))
+ 
+ --updates readings on screen   
+ display.settext(measure_input, data1 )
+  display.settext(measure_vsense, data2 )
+   display.settext(measure_shuntw, data3 )
+    display.settext(measure_current, data4 )
+   
+    delay(timeBetween) --waits to take next measurement 
+ 
+ end
+    end
+    end
+
+  
+     
+  --displays options menu
+function open_settings()
+  optionID = display.input.option("Select an option", "Change Shunt", "Change Readings","Change Delay")
+  if     optionID == display.BUTTON_OPTION1 then setup_shunt()
+  elseif optionID == display.BUTTON_OPTION2 then setup_readings()
+  elseif optionID == display.BUTTON_OPTION3 then setup_delay()
+  elseif optionID == display.BUTTON_OPTIONNIL then display.changescreen(swipe_id) 
+  end
+     end
+     
+
+  
+  
+
+
+--******************--
+--Script starts here--
+--******************--
+
+shuntValue=0.01
+shuntDiss=0.1
+readings=100000
+timeBetween = 0.1
+data1="-"
+data2="-"
+data3="-"
+data4 = "-"
+
+if screen_is_setup ~= 1 then screen_setup() end --prevents multiple swipe screens being created
+
+setup()
+
+
+
+

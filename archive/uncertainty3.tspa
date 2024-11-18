@@ -1,0 +1,476 @@
+loadscript Uncertainty
+-- $Title: Measurement Uncertainty
+-- $Product: DAQ6510, DMM6500
+-- $Tag: Measurement uncertainty, Tolerance, Error margin
+-- $Description: Displays the measurement uncertainty of the currently measured value
+-- $Requires: v1.0.01f
+-- $Icon: uncertainty_icon
+-- Last Updated: $Date: 2024-10-19
+--[[
+Script: Uncertainty.tspa
+Written by: Johannes Raschke
+Based on Brad Odhner's Probe_Hold.tspa (Keithley Applications Engineering)
+`
+***********************************************************
+*** Copyright 2024 Johannes Raschke                     ***
+*** See www.tek.com/sample-license for licensing terms. ***
+***********************************************************
+
+TODO: 
+* Funktion zur Berechnung der Unsicherheiten als Zahlenwerte auslagern für Remote-Betrieb
+  (mit Berücksichtigung der aktuellen Messfunktionen)
+* Alle Messfunktionen des K6500 unterstützen
+* Zusätzliche Fehler durch NPLC berücksichtigen
+* Zusätzliche Fehler durch Autozero off berücksichtigen
+* Konfigurationsseite für Kalibrierinterval einfügen (oder: kann man das abfragen?)
+* Konfigurationsseite für AC-Frequenz einfügen
+* Berechnungsgrundlage der Unsicherheit als String zusammenbasteln
+* K7510 unterstützen
+]]--
+function precheck() -- Checks that the script will work with the current settings
+    user_func = dmm.measure.func
+    if user_func == dmm.FUNC_NONE then 
+        local selection = display.prompt(display.BUTTONS_YESNO, 'Not compatible with Digitize functions, set function to DC Voltage and continue? You can change the function later.')
+        if selection == display.BUTTON_YES then 
+            user_func = dmm.FUNC_DC_VOLTAGE
+            return true 
+        else 
+            return false
+        end
+    elseif user_func == dmm.FUNC_TEMPERATURE then 
+        local selection = display.prompt(display.BUTTONS_YESNO, 'Not compatible with Temperature function, set function to DC Voltage and continue? You can change the function later.')
+        if selection == display.BUTTON_YES then 
+            user_func = dmm.FUNC_DC_VOLTAGE
+            return true 
+        else 
+            return false
+        end
+    elseif user_func == dmm.FUNC_CONTINUITY then 
+        local selection = display.prompt(display.BUTTONS_YESNO, 'Not compatible with Continuity function, set function to DC Voltage and continue? You can change the function later.')
+        if selection == display.BUTTON_YES then 
+            user_func = dmm.FUNC_DC_VOLTAGE
+            return true 
+        else 
+            return false
+        end    
+    elseif user_func == dmm.FUNC_DCV_RATIO then 
+        local selection = display.prompt(display.BUTTONS_YESNO, 'Not compatible with Ration function, set function to DC Voltage and continue? You can change the function later.')
+        if selection == display.BUTTON_YES then 
+            user_func = dmm.FUNC_DC_VOLTAGE
+            return true 
+        else 
+            return false
+        end    
+    end
+end -- precheck()
+
+function createMainScreen() -- Create grid lines on the swipe screen
+	-- Create grid line for each reading.
+    local gridLines = {}
+	
+    -- Create swipe screen
+    swipe_id = display.create(display.SCREEN_HOME, display.OBJ_SWIPE, 'Uncertainty')
+    
+    -- Column lines
+	gridLines[1] = display.create(swipe_id, display.OBJ_LINE, 1, 5, 1, 200)
+	gridLines[2] = display.create(swipe_id, display.OBJ_LINE, 250, 5, 250, 200)
+    gridLines[3] = display.create(swipe_id, display.OBJ_LINE, 620, 5, 620, 200)
+	-- Row lines
+	gridLines[4] = display.create(swipe_id, display.OBJ_LINE, 1, 50, 620, 50)
+	gridLines[5] = display.create(swipe_id, display.OBJ_LINE, 1, 100, 620, 100)
+	gridLines[6] = display.create(swipe_id, display.OBJ_LINE, 1, 150, 620, 150)
+
+	for i = 1, table.getn(gridLines) do
+		display.setcolor(gridLines[i], 0x7f7f7f)
+	end
+
+    -- Now Create objects on the swipe screen that aren't the grid lines
+    displayItems[1] = display.create(swipe_id, display.OBJ_TEXT, 12, 35, "Abs. uncertainty", display.COLOR_MEASUREMENT, display.FONT_LARGE)
+	displayItems[2] = display.create(swipe_id, display.OBJ_TEXT, 12, 85,   "Rel. uncertainty", display.COLOR_MEASUREMENT, display.FONT_LARGE)
+	-- displayItems[3] = display.create(swipe_id, display.OBJ_TEXT, 12, 135,  formattedReadings[3], display.COLOR_MEASUREMENT, display.FONT_LARGE)
+	displayItems[4] = display.create(swipe_id, display.OBJ_TEXT, 12, 185,  "Cal. interval", display.COLOR_MEASUREMENT, display.FONT_LARGE)
+
+	displayItems[5] = display.create(swipe_id, display.OBJ_TEXT, 251, 35,  "---", display.COLOR_MEASUREMENT, display.FONT_LARGE)
+	displayItems[6] = display.create(swipe_id, display.OBJ_TEXT, 251, 85,  "---", display.COLOR_MEASUREMENT, display.FONT_LARGE)
+	-- displayItems[7] = display.create(swipe_id, display.OBJ_TEXT, 251, 135, formattedReadings[7], display.COLOR_MEASUREMENT, display.FONT_LARGE)
+	displayItems[8] = display.create(swipe_id, display.OBJ_TEXT, 251, 185, "---", display.COLOR_MEASUREMENT, display.FONT_LARGE)
+
+    -- Settings button
+    settings_button_id = display.create(swipe_id, display.OBJ_BUTTON, 625, 20, "Settings")
+    display.setevent(settings_button_id, display.EVENT_PRESS, "open_settings()")
+
+    screen_is_setup = 1 --if the script is restarted this will stop multiple swipe screens being created
+end
+
+function open_settings() -- Opens the settings screen
+    about_id = display.create(display.ROOT, display.OBJ_SCREEN, 'Uncertainty Settings')
+
+    local calibrationInterval_id = display.create(about_id, display.OBJ_EDIT_OPTION, 200, 10, "Cal. interval", "Calibration interval", "24 h", "90 days", "1 year", "2 years")
+    display.setevent(calibrationInterval_id, display.EVENT_PRESS, "cal_interval_setting_event(%value)")
+    display.setvalue(calibrationInterval_id, calibrationInterval)
+
+	--local tolerance_id = display.create(settings_id, display.OBJ_EDIT_NUMBER, 200, 90, "Probe Hold Tolerance", "1 to 100 percent", display.NFORMAT_INTEGER, readTolerance*100, 1, 100, "%")
+	--display.setevent(tolerance_id, display.EVENT_PRESS, "tolerance_press_event(%value)")
+
+    --local threshold_id = display.create(settings_id, display.OBJ_EDIT_NUMBER, 200, 170, "Low Threshold", "Ignore readings below threshold", display.NFORMAT_USER, threshold, 0)
+    --display.setevent(threshold_id, display.EVENT_PRESS, "threshold_press_event(%value)")
+
+    --local repeat_id = display.create(settings_id, display.OBJ_EDIT_NUMBER, 200, 250, "Repeat Tolerance", "Repeat readings are ignored", display.NFORMAT_INTEGER, repeatTolerance*100, 1, 100, '%')
+    --display.setevent(repeat_id, display.EVENT_PRESS, "repeat_press_event(%value)")
+
+    local exit_id = display.create(about_id, display.OBJ_BUTTON, 350, 360, "Back")
+    display.setevent(exit_id, display.EVENT_PRESS, "close_settings()")
+end
+
+function cal_interval_setting_event(v) -- the selector passes 1 for 24h, 2 for 90 days, 3 for 1 year, 4 for 2 years
+	calibrationInterval = v
+end
+
+function close_settings() -- Closes the settings screen and goes back to swipe_id
+    display.changescreen(display.SCREEN_HOME)
+    display.delete(about_id)
+    delay() -- Needed to allow change to swipe_id?
+    display.changescreen(swipe_id)
+    collectgarbage()
+end
+
+function getUnitSymbol()    
+    local func = dmm.measure.func
+        if     func == dmm.FUNC_DC_VOLTAGE      then unitString = "V"
+        elseif func == dmm.FUNC_DC_CURRENT      then unitString = "A"
+        elseif func == dmm.FUNC_RESISTANCE      then unitString = "\018"
+        elseif func == dmm.FUNC_4W_RESISTANCE   then unitString = "\018"
+        elseif func == dmm.FUNC_CAPACITANCE     then unitString = "F"
+        elseif func == dmm.FUNC_AC_VOLTAGE      then unitString = "V"
+        elseif func == dmm.FUNC_AC_CURRENT      then unitString = "A"
+        elseif func == dmm.FUNC_ACV_FREQUENCY   then unitString = "Hz"
+        elseif func == dmm.FUNC_ACV_PERIOD      then unitString = "s"
+        else unitString = "X"
+        end    
+        return unitString
+end
+
+-- take a float value,
+--  - convert it to max. 3 digits before the decimal point and
+--  - add a unit prefix (e.g. for "kilo")
+--  - return the resulting string
+-- This does not add the unit itself!
+function prettyPrintValue(value)
+    local unitPrefix = ""
+    if value < 1e-9 then
+        value = value * 1e12 -- pico-unit
+        unitPrefix = "p"
+    elseif value < 1e-6 then
+        value = value * 1e9 -- nano-unit
+        unitPrefix = "n"
+    elseif value < 1e-3 then
+        value = value * 1e6 -- micro-unit
+        unitPrefix = "\020"
+    elseif value < 1.0 then
+        value = value * 1e3 -- milli-unit
+        unitPrefix = "m"
+    elseif value < 1e3 then
+        value = value -- 1 ... 1000 --> no unit prefix
+        unitPrefix = ""
+    elseif value < 1e6 then
+        value = value / 1e3 -- kilo-unit
+        unitPrefix = "k"
+    elseif value < 1e9 then
+        value = value / 1e6 -- Mega-unit
+        unitPrefix = "M"
+    end
+    value = round(value, absUncertaintyRoundingDigits)
+    prettyString = tostring(value) .. " " .. unitPrefix
+    return prettyString
+end
+
+function setup() -- Calls other init functions and creates the timers
+    
+    -- create "defines" and global variables
+    displayItems = {} -- Table that contains ids of the text object that display the values, filled in print_uncertainties()
+    unitString = ""
+    
+    calibrationInterval_24h    = 1
+    calibrationInterval_90days = 2
+    calibrationInterval_1year  = 3
+    calibrationInterval_2years = 1
+    
+    calibrationInterval = calibrationInterval_1year -- set the default
+    
+    -- Recover user's previous function
+    dmm.measure.func = user_func
+    
+    --if screen_is_setup ~= 1 
+    --then
+         createMainScreen()
+    --end --prevents multiple swipe screens being created
+    
+    -- Setup timers for ongoing stuff
+	read_timer_id = display.create(swipe_id, display.OBJ_TIMER, 0.5, display.TIMER_FOREVER, "takeReading()")
+	garbage_timer_id = display.create(swipe_id, display.OBJ_TIMER, 60, display.TIMER_FOREVER, "collectgarbage()")
+    
+    display.changescreen(display.SCREEN_HOME) -- Go to the newly created screen
+    display.changescreen(swipe_id)
+
+    takeReading()
+end
+
+function check_valid(reading) -- Takes the most recent reading and verifies it's a reading I want
+    if reading == 9.9e+37 then return false end -- Don't allow overflows  
+    return true -- Reading is valid
+end
+
+function takeReading() -- take a reading and display the uncertainty
+    dmm.measure.read(defbuffer1)
+    getUnitSymbol()
+    update_uncertainties();
+end
+
+-- return the function which calculates the uncertainties for the readings in the
+-- currently used measurement mode of the instrument
+function getUncertaintyFunction()
+    local func = dmm.measure.func
+    if     func == dmm.FUNC_DC_VOLTAGE      then return getDcvUncertainty
+    elseif func == dmm.FUNC_DC_CURRENT      then return getDciUncertainty
+--    elseif func == dmm.FUNC_RESISTANCE      then bufferUnit = buffer.UNIT_OHM
+--    elseif func == dmm.FUNC_4W_RESISTANCE   then bufferUnit = buffer.UNIT_OHM
+--    elseif func == dmm.FUNC_CAPACITANCE     then bufferUnit = buffer.UNIT_FARAD
+--    elseif func == dmm.FUNC_AC_VOLTAGE      then bufferUnit = buffer.UNIT_VOLT_AC
+--    elseif func == dmm.FUNC_AC_CURRENT      then bufferUnit = buffer.UNIT_AMP_AC
+--    elseif func == dmm.FUNC_ACV_FREQUENCY   then bufferUnit = buffer.UNIT_HERTZ
+--    elseif func == dmm.FUNC_ACV_PERIOD      then bufferUnit = buffer.UNIT_SECOND
+--    elseif func == dmm.FUNC_DCV_RATIO       then bufferUnit = buffer.UNIT_RATIO
+    else return getNoUncertainty
+    end
+ end
+
+function getDcvUncertainty(reading, range)
+    -- return measurement uncertainty in V
+    -- using only 1 year specs for now...
+    if range == 0.1 then 
+        return reading * 0.0030/100 + range * 0.0035/100
+    elseif range == 1 then
+        return reading * 0.0025/100 + range * 0.0006/100
+    elseif range == 10 then
+        return reading * 0.0025/100 + range * 0.0005/100
+    elseif range == 100 then
+        return reading * 0.0040/100 + range * 0.0006/100
+    elseif range == 1000 then
+        return reading * 0.0040/100 + range * 0.0006/100
+    else return 666 -- error
+    end
+end
+
+function getDciUncertainty(reading, range)
+    -- return measurement uncertainty in A
+    -- using only 1 year specs for now...
+    if range == 0.00001 then -- 10 µA
+        return reading * 0.045/100 + range * 0.005/100
+    elseif range == 0.0001 then -- 100 µA
+        return reading * 0.045/100 + range * 0.005/100
+    elseif range == 0.001 then -- 1 mA
+        return reading * 0.045/100 + range * 0.005/100
+    elseif range == 0.01 then -- 10 mA
+        return reading * 0.020/100 + range * 0.005/100
+    elseif range == 0.1 then
+        return reading * 0.020/100 + range * 0.005/100
+    elseif range == 1 then
+        return reading * 0.040/100 + range * 0.005/100
+    elseif range == 3 then
+        return reading * 0.050/100 + range * 0.004/100
+    elseif range == 10 then
+        return reading * 0.220/100 + range * 0.025/100
+    else return 666 -- error
+    end
+end
+
+function getNoUncertainty(reading, range)
+    return 0
+end
+
+function update_uncertainties() -- Updates the number display
+    local reading = defbuffer1[defbuffer1.endindex] -- the last reading that was taken by the meter
+    local range = dmm.measure.range
+
+    if check_valid(reading) == false then 
+        display.settext(displayItems[5], "---")
+        display.settext(displayItems[6], "---")
+    else    
+        local uncertaintyFunction = getUncertaintyFunction();
+        local uncertainty = uncertaintyFunction(reading, range)                
+        display.settext(displayItems[5], prettyPrintValue(uncertainty) .. getUnitSymbol()) -- absolute uncertainty
+        display.settext(displayItems[6], tostring(round(uncertainty/reading*1e6, relUncertaintyRoundingDigits)) .. " " .. "ppm") -- relative uncertainty
+
+        display.settext(displayItems[8], tostring(calibrationInterval)) -- for testing
+    end
+    --display.settext(displayItems[2], "Updated!")
+    -- display.settext(displayItems[3], formattedReadings[3])
+    -- display.settext(displayItems[4], formattedReadings[4])
+    -- display.settext(displayItems[5], formattedReadings[5])
+    -- display.settext(displayItems[6], formattedReadings[6])
+    -- display.settext(displayItems[7], formattedReadings[7])
+    -- display.settext(displayItems[8], formattedReadings[8])
+end
+
+function round(vaule, digits)
+    digits = math.pow(10, digits or 0)
+    vaule = vaule * digits
+    if vaule >= 0 then vaule = math.floor(vaule + 0.5) else vaule = math.ceil(vaule - 0.5) end
+    return vaule / digits
+end
+
+
+function main() -- Does nothing in this App, here for posterity
+end
+
+--------------------------------- Script starts here ---------------------------------------
+-- Global Settings
+absUncertaintyRoundingDigits = 2
+relUncertaintyRoundingDigits = 2
+
+
+-- Call opening functions and main()
+local continue = precheck()
+if continue == false then exit()
+else
+    --reset()
+    collectgarbage() -- Built-in function
+    setup()
+    main()
+end
+
+endscript
+
+loadimage uncertainty_icon Uncertainty
+iVBORw0KGgoAAAANSUhEUgAAADwAAAA8CAIAAAC1nk4lAAAA0GVYSWZJSSoACAAAAAoAAAEEAAEAAAA8AAAAAQEEAAEAAAA8AAAAAg
+EDAAMAAACGAAAAEgEDAAEAAAABAAAAGgEFAAEAAACMAAAAGwEFAAEAAACUAAAAKAEDAAEAAAACAAAAMQECAA0AAACcAAAAMgECABQA
+AACqAAAAaYcEAAEAAAC+AAAAAAAAAAgACAAIAEgAAAABAAAASAAAAAEAAABHSU1QIDIuMTAuMzgAADIwMjQ6MTA6MjIgMjM6MDU6ND
+kAAQABoAMAAQAAAAEAAAAAAAAAjTdkhwAAAYRpQ0NQSUNDIHByb2ZpbGUAAHicfZE9SMNAHMVfU6VSKg4WEXHIUJ3soiLipFUoQoVQ
+K7TqYHLpFzRpSFJcHAXXgoMfi1UHF2ddHVwFQfADxNnBSdFFSvxfUmgR48FxP97de9y9A4RGhWlW1yyg6baZTibEbG5VDL0ijAFEMY
+OQzCxjTpJS8B1f9wjw9S7Os/zP/Tl61bzFgIBIPMsM0ybeIJ7atA3O+8RRVpJV4nPiMZMuSPzIdcXjN85FlwWeGTUz6XniKLFY7GCl
+g1nJ1IgniWOqplO+kPVY5bzFWavUWOue/IWRvL6yzHWaw0hiEUuQIEJBDWVUYCNOq06KhTTtJ3z8Q65fIpdCrjIYORZQhQbZ9YP/we
+9urcLEuJcUSQDdL47zMQKEdoFm3XG+jx2neQIEn4Erve2vNoDpT9LrbS12BPRtAxfXbU3ZAy53gMEnQzZlVwrSFAoF4P2MvikH9N8C
+4TWvt9Y+Th+ADHWVugEODoHRImWv+7y7p7O3f8+0+vsBwmRyxrKYrVMAAA14aVRYdFhNTDpjb20uYWRvYmUueG1wAAAAAAA8P3hwYW
+NrZXQgYmVnaW49Iu+7vyIgaWQ9Ilc1TTBNcENlaGlIenJlU3pOVGN6a2M5ZCI/Pgo8eDp4bXBtZXRhIHhtbG5zOng9ImFkb2JlOm5z
+Om1ldGEvIiB4OnhtcHRrPSJYTVAgQ29yZSA0LjQuMC1FeGl2MiI+CiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3
+JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPgogIDxyZGY6RGVzY3JpcHRpb24gcmRmOmFib3V0PSIiCiAgICB4bWxuczp4bXBN
+TT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIKICAgIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC
+8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiCiAgICB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iCiAg
+ICB4bWxuczpHSU1QPSJodHRwOi8vd3d3LmdpbXAub3JnL3htcC8iCiAgICB4bWxuczp0aWZmPSJodHRwOi8vbnMuYWRvYmUuY29tL3
+RpZmYvMS4wLyIKICAgIHhtbG5zOnhtcD0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wLyIKICAgeG1wTU06RG9jdW1lbnRJRD0i
+Z2ltcDpkb2NpZDpnaW1wOjM1M2NiOTdhLWQ5MzYtNGFkMS1hZmFkLWE3MTEzZWFiMmM1MSIKICAgeG1wTU06SW5zdGFuY2VJRD0ieG
+1wLmlpZDo4YjIyY2E5OS1iZGEzLTRhZGItOWNhYS1lOWY2OGQ2Y2I0MGUiCiAgIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1w
+LmRpZDphMGI5YjcxZC00YmViLTQ5ZjAtOWRjMC1kNWRmNDI2NmJlOTQiCiAgIGRjOkZvcm1hdD0iaW1hZ2UvcG5nIgogICBHSU1QOk
+FQST0iMi4wIgogICBHSU1QOlBsYXRmb3JtPSJMaW51eCIKICAgR0lNUDpUaW1lU3RhbXA9IjE3Mjk2MzExNTExMjIwNzQiCiAgIEdJ
+TVA6VmVyc2lvbj0iMi4xMC4zOCIKICAgdGlmZjpPcmllbnRhdGlvbj0iMSIKICAgeG1wOkNyZWF0b3JUb29sPSJHSU1QIDIuMTAiCi
+AgIHhtcDpNZXRhZGF0YURhdGU9IjIwMjQ6MTA6MjJUMjM6MDU6NDkrMDI6MDAiCiAgIHhtcDpNb2RpZnlEYXRlPSIyMDI0OjEwOjIy
+VDIzOjA1OjQ5KzAyOjAwIj4KICAgPHhtcE1NOkhpc3Rvcnk+CiAgICA8cmRmOlNlcT4KICAgICA8cmRmOmxpCiAgICAgIHN0RXZ0Om
+FjdGlvbj0ic2F2ZWQiCiAgICAgIHN0RXZ0OmNoYW5nZWQ9Ii8iCiAgICAgIHN0RXZ0Omluc3RhbmNlSUQ9InhtcC5paWQ6YmUyYWJm
+ZTAtODEzZS00ZWZhLWI4YTItM2E0ZGYzOTlmM2I5IgogICAgICBzdEV2dDpzb2Z0d2FyZUFnZW50PSJHaW1wIDIuMTAgKExpbnV4KS
+IKICAgICAgc3RFdnQ6d2hlbj0iMjAyNC0xMC0yMlQyMzowNTo1MSswMjowMCIvPgogICAgPC9yZGY6U2VxPgogICA8L3htcE1NOkhp
+c3Rvcnk+CiAgPC9yZGY6RGVzY3JpcHRpb24+CiA8L3JkZjpSREY+CjwveDp4bXBtZXRhPgogICAgICAgICAgICAgICAgICAgICAgIC
+AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIC
+AgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgIC
+AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIC
+AgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgIC
+AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIC
+AgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIC
+AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIC
+AgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIC
+AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIC
+AgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIC
+AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIC
+AgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIC
+AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIC
+AgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgCjw/eHBhY2tldCBlbmQ9InciPz69u1eWAAAACXBIWXMAAAsTAAALEwEA
+mpwYAAAAB3RJTUUH6AoWFQUz0UvXZQAAFg5JREFUaN61mmvMZtd119da+3Iuz/V93vv7jmfs8TjJxONp08R23EDArprQQtKQNoUAUU
+WlSkUg0S9QKoEEQkCrSm2EEAKptEXQSC0qkYDmA+JWxWma2nFsx7FdeybxXDye9/bcn3PZe6+1+PAmH9qkGY/rLp1PZ59z9NPSf6+z
+1wXhTds//Ls/9Xf+2kdKjwQJJRECqhIoACICoCozICmiioAwqKioAiqiAAmgIKmoKrJxL96a/8pvfva3P/vf4O7NvMnnfv6f/OxP/+
+hfyhyTRjolBiFVBEVCMBbQIBpCQkMIgAoAoqAAisooAqqoCiiAiCCjwj146eKNg5Ovf+Panwn0r3z65z/xxCMWWuRIKRIwgSAQEiEh
+WIPWo7FoLTgHgKdvIZxSAqiCCkjS00sZQImwJH3fQ+8SWz77wtfeZuh/90v/8qMfuGxTBRKIIyGDJgRFIkRUa9E4U5RoLZBFwm8BK6
+gCyLeIGYQ1tSysLMqJEyMCcnXhzO7W3tnfe+qZtw36X/3Tn/vE44/YtEJukSNqAmUkRCREBESwnnxGxiogiACiAgKCgoJEUAVRFVWO
+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
+mza6O+rENljrF6vVub0dalbjN25ff/p5X9V034WvvvLqHTx94/Xbj57fqFar3lrfomxsn2nbhrkFTAfHJ/dduP8d5+/5yMPv1CZK02
+piNETAxncOVtVs1Vx8147v9S88cP65p6/cXjTvfeh+VmKy3uc289agqmRZ7opcQdumato2c9Myw9ZhEiq8t1k2nYybk7kjCMe3Lz3w
+0J3l8dn/8bm/8v6LR4fHu8Pykx+85Lxpqvn6Wn6U++397fe///vWOrlBQ65DaJpVDaiW0levHtjlymU5gYLo1vb2O/tfL1zRKzvWGt
+Ptgi1UAZ0lY/D0n5XYkYciK/1JnuVFwW1bbax1OTSL8apTrnlyfHKyPyjvAP2B973n4z/0xNm1/leevHHu/KP3D+6xvFrb2e7Z8NDl
+B99XlkWekarBDMCC9WV/aEh0Od3oz9oxbe1sky8h6/g+P/aeS79/5WaQDUriYgJSMBbAYBRFUEYVUHBvTKtzG0MEYwAJqV+WVVzKsN
+svOrZx1Xi2NRjeAfof/O1PPLqeYop/8bHvcZ3exmjz6ZeuPrx+X+aL7t4AgdAYFAUwYDwQAQcILQLNxsuL5892+mtqPJQ9aYMvOhfW
+e09/4+S+UdabLctBdEVpOt0EdtHE48k8xkBxtdUrsjIPKQFQYnHGkqV2tRLBXr+H+1uynN8Bertdfv2ZV91wrcy7rKLKw27mXElEKI
+AsKAiikJdorHKC0MTV4mjajG+9cfHsrstLzEvjC81yyor+oL+n8y988ZnUGa6vN5lTE2obY6/MBoNe6YxxRpq2jkGtYQFWJSJSuP2V
+F7sPXgyZX9/fbTK8A/St69fjC8+Yi+/267udbqkc3rm/cTALg3wQm5kDKzFa9BCXK4EkcjiZv37r9deefe6Dj32ftbaaTwubxVUloT
+58/fZsPjv7wPm/9e53vfT81154/nk/HLo8Q7LLZazr2lhDZJy3WeZdnifjQJQ5dkfDM5ffuTyYFL7Y2tgYnDt7B+gFUOZKVFoej3s7
+26oqgYcwu3akGmNsVnG1CiFEQZTIy6mTWE9PHn/8+3fWh6987aXJvNre3kqsVRumdb0KYTyrOghF7plhMp2tLGZl12eFRWOASKFt2m
+XV5F0RMuhsDMF7t3fxgVvjl8pe2V/r1t+Wqfxx6BO157d387U1bUJqA6ci1cvM2i23qKpVVbcmRBdTCJFZq2Z1PJ+KqlkuP//l5154
+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
+endimage
+
+Uncertainty.save()
