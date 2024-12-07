@@ -17,11 +17,9 @@ in defbuffer1, assumig it was taken with the current instrument stettings
 
 TODO: 
 * Hints in ACV mode trigger an error because there are no NPLC
-* Add hints for AC modes (e.g. frequency is set too low for bandwidth setting)
 * Stop passing calInterval as a paramter - it's global anyway...
 * Disable / clear error limit display if Overflow
-* Support more measurement functions of the 6500
-  (currently supported: DCV, DCI, RESISTANCE, 4W-Resistance)
+* Support ratio measurement functions of the 6500
 * add support for K7510 (I probably won't have the nerve to do that)
 
 ***********************************************************
@@ -57,43 +55,43 @@ function createMainScreen() -- Create grid lines on the swipe screen
 	end
 
     -- Now Create objects on the swipe screen that aren't the grid lines
-    displayItems[1] = display.create(swipe_id, display.OBJ_TEXT, 12, 35, "Abs. uncertainty", display.COLOR_MEASUREMENT, display.FONT_LARGE)
-	displayItems[2] = display.create(swipe_id, display.OBJ_TEXT, 12, 85,   "Rel. uncertainty", display.COLOR_MEASUREMENT, display.FONT_LARGE)
-	displayItems[3] = display.create(swipe_id, display.OBJ_TEXT, 12, 135,  "Lower error limit", display.COLOR_MEASUREMENT, display.FONT_LARGE)
-	displayItems[4] = display.create(swipe_id, display.OBJ_TEXT, 12, 185,  "Upper error limit", display.COLOR_MEASUREMENT, display.FONT_LARGE)
+    DisplayItems[1] = display.create(swipe_id, display.OBJ_TEXT, 12, 35, "Abs. uncertainty", UNCERTAINTY_COLOR_VALUE_LABEL, display.FONT_LARGE)
+	DisplayItems[2] = display.create(swipe_id, display.OBJ_TEXT, 12, 85,   "Rel. uncertainty", UNCERTAINTY_COLOR_VALUE_LABEL, display.FONT_LARGE)
+	DisplayItems[3] = display.create(swipe_id, display.OBJ_TEXT, 12, 135,  "Lower error limit", UNCERTAINTY_COLOR_VALUE_LABEL, display.FONT_LARGE)
+	DisplayItems[4] = display.create(swipe_id, display.OBJ_TEXT, 12, 185,  "Upper error limit", UNCERTAINTY_COLOR_VALUE_LABEL, display.FONT_LARGE)
 
-	displayItems[5] = display.create(swipe_id, display.OBJ_TEXT, 275, 35,  "---", display.COLOR_MEASUREMENT, display.FONT_LARGE)
-	displayItems[6] = display.create(swipe_id, display.OBJ_TEXT, 275, 85,  "---", display.COLOR_MEASUREMENT, display.FONT_LARGE)
-	displayItems[7] = display.create(swipe_id, display.OBJ_TEXT, 275, 135, "---", display.COLOR_MEASUREMENT, display.FONT_LARGE)
-	displayItems[8] = display.create(swipe_id, display.OBJ_TEXT, 275, 185, "---", display.COLOR_MEASUREMENT, display.FONT_LARGE)
+	DisplayItems[5] = display.create(swipe_id, display.OBJ_TEXT, 275, 35,  "---", UNCERTAINTY_COLOR_VALUE_VALUE, display.FONT_LARGE)
+	DisplayItems[6] = display.create(swipe_id, display.OBJ_TEXT, 275, 85,  "---", UNCERTAINTY_COLOR_VALUE_VALUE, display.FONT_LARGE)
+	DisplayItems[7] = display.create(swipe_id, display.OBJ_TEXT, 275, 135, "---", UNCERTAINTY_COLOR_VALUE_VALUE, display.FONT_LARGE)
+	DisplayItems[8] = display.create(swipe_id, display.OBJ_TEXT, 275, 185, "---", UNCERTAINTY_COLOR_VALUE_VALUE, display.FONT_LARGE)
 
     -- Settings button
-    settings_button_id = display.create(swipe_id, display.OBJ_BUTTON, 630, 10, "Settings")
+    local settings_button_id = display.create(swipe_id, display.OBJ_BUTTON, 630, 10, "Settings")
     display.setevent(settings_button_id, display.EVENT_PRESS, "open_settings()")
 
     -- Hints button
-    hints_button_id = display.create(swipe_id, display.OBJ_BUTTON, 630, 78, "Hints")
+    local hints_button_id = display.create(swipe_id, display.OBJ_BUTTON, 630, 78, "Hints")
     display.setevent(hints_button_id, display.EVENT_PRESS, "show_hints()")
 
     -- About button
-    about_button_id = display.create(swipe_id, display.OBJ_BUTTON, 630, 144, "About")
+    local about_button_id = display.create(swipe_id, display.OBJ_BUTTON, 630, 144, "About")
     display.setevent(about_button_id, display.EVENT_PRESS, "show_about()")
 
-    screen_is_setup = 1 --if the script is restarted this will stop multiple swipe screens being created
+    Screen_is_setup = 1 --if the script is restarted this will stop multiple swipe screens being created
 end
 
 function open_settings() -- Opens the settings screen
-    settings_id = display.create(display.ROOT, display.OBJ_SCREEN, 'Uncertainty Settings')
+    Settings_id = display.create(display.ROOT, display.OBJ_SCREEN, 'Uncertainty Settings')
 
-    local calibrationInterval_id = display.create(settings_id, display.OBJ_EDIT_OPTION, 200, 10, "Cal. interval", "Calibration interval", "24 h", "90 days", "1 year", "2 years")
+    local calibrationInterval_id = display.create(Settings_id, display.OBJ_EDIT_OPTION, 200, 10, "Cal. interval", "Calibration interval", "24 h", "90 days", "1 year", "2 years")
     display.setevent(calibrationInterval_id, display.EVENT_PRESS, "calIntervalSettingEvent(%value)")
-    display.setvalue(calibrationInterval_id, calibrationInterval)
+    display.setvalue(calibrationInterval_id, CalibrationInterval)
 
-    local triggerReadingsFromApp_id = display.create(settings_id, display.OBJ_EDIT_OPTION, 200, 90, "AutoTrigger", "App triggers cont. readings", "On", "Off") -- 1=On, 2=Off
+    local triggerReadingsFromApp_id = display.create(Settings_id, display.OBJ_EDIT_OPTION, 200, 90, "AutoTrigger", "App triggers cont. readings", "On", "Off") -- 1=On, 2=Off
     display.setevent(triggerReadingsFromApp_id, display.EVENT_PRESS, "triggerReadingsFromAppEvent(%value)")
-    display.setvalue(triggerReadingsFromApp_id, triggerReadingsFromApp)
+    display.setvalue(triggerReadingsFromApp_id, TriggerReadingsFromApp)
 
-    local AcvFrequency_id = display.create(settings_id, display.OBJ_EDIT_OPTION, 200, 170, "ACV frequency", "Frequency for ACV", "3 Hz - 5 Hz",   -- 1
+    local AcvFrequency_id = display.create(Settings_id, display.OBJ_EDIT_OPTION, 200, 170, "ACV frequency", "Frequency for ACV", "3 Hz - 5 Hz",   -- 1
                                                                                                                                 "5 Hz - 10 Hz",   -- 2
                                                                                                                                 "10 Hz - 20 kHz", -- 3
                                                                                                                                 "20 - 50 kHz",    -- 4
@@ -102,7 +100,7 @@ function open_settings() -- Opens the settings screen
     display.setevent(AcvFrequency_id, display.EVENT_PRESS, "AcvFrequencyEvent(%value)")
     display.setvalue(AcvFrequency_id, AcvFrequency)
 
-    local AciFrequency_id = display.create(settings_id, display.OBJ_EDIT_OPTION, 200, 250, "ACI frequency", "Frequency for ACI", "3 Hz - 5 Hz",     -- 1
+    local AciFrequency_id = display.create(Settings_id, display.OBJ_EDIT_OPTION, 200, 250, "ACI frequency", "Frequency for ACI", "3 Hz - 5 Hz",     -- 1
                                                                                                                                  "5 Hz - 1 kHz",    -- 2
                                                                                                                                  "1 kHz - 5 kHz",   -- 3
                                                                                                                                  "5 kHz - 10 kHz")  -- 4                                                                                                                         
@@ -111,16 +109,16 @@ function open_settings() -- Opens the settings screen
 
     -- note: add next button here
 
-    local exit_id = display.create(settings_id, display.OBJ_BUTTON, 350, 360, "Back")
+    local exit_id = display.create(Settings_id, display.OBJ_BUTTON, 350, 360, "Back")
     display.setevent(exit_id, display.EVENT_PRESS, "close_settings()")
 end
 
 function calIntervalSettingEvent(v) -- the selector passes 1 for 24h, 2 for 90 days, 3 for 1 year, 4 for 2 years
-	calibrationInterval = v
+	CalibrationInterval = v
 end
 
 function triggerReadingsFromAppEvent(v)
-    triggerReadingsFromApp = v
+    TriggerReadingsFromApp = v
 end
 
 function AcvFrequencyEvent(v)
@@ -133,14 +131,14 @@ end
 
 function close_settings() -- Closes the settings screen and goes back to swipe_id
     display.changescreen(display.SCREEN_HOME)
-    display.delete(settings_id)
+    display.delete(Settings_id)
     delay() -- Needed to allow change to swipe_id?
     display.changescreen(swipe_id)
     collectgarbage()
 end
 
 function show_hints()
-    hints_id = display.create(display.ROOT, display.OBJ_SCREEN, 'Uncertainty improvement hints')
+    Hints_id = display.create(display.ROOT, display.OBJ_SCREEN, 'Uncertainty improvement hints')
     local operatorHints = {} --create a new list
     
 
@@ -216,11 +214,11 @@ function show_hints()
     if(dmm.measure.func == dmm.FUNC_AC_VOLTAGE) or (dmm.measure.func == dmm.FUNC_AC_CURRENT) then   
         -- check for too high bandwidth (high-pass) settings 
         if(dmm.measure.detectorbandwidth == dmm.DETECTBW_30HZ) or (dmm.measure.detectorbandwidth == dmm.DETECTBW_300HZ) then
-            if(AcvFrequency <= AcvFrequency_5HzTo10Hz) then 
+            if(AcvFrequency <= ACV_FREQUENCY_5HzTo10Hz) then 
                 -- bandwidth (highh pass filter) is certainly set too high
                 table.insert(operatorHints, "- Set the AC detector bandwidth to 3 Hz (lower than lowest signal frequency)!")
             elseif (dmm.measure.detectorbandwidth == dmm.DETECTBW_300HZ) then
-                if(AcvFrequency == AcvFrequency_10HzTo20kHz) then 
+                if(AcvFrequency == ACV_FREQUENCY_10HzTo20kHz) then 
                     -- bandwidth (highh pass filter) is possibly set too high
                     table.insert(operatorHints, "- If your signal frequency is <300 Hz, set the AC detector bandwidth")
                     table.insert(operatorHints, "   to 30 Hz or 3 Hz (lower than lowest signal frequency component)!")
@@ -228,7 +226,7 @@ function show_hints()
             end
             -- now check for unnecessary low bandwidth settings
         elseif (dmm.measure.detectorbandwidth == dmm.DETECTBW_3HZ) or (dmm.measure.detectorbandwidth == dmm.DETECTBW_300HZ) then
-            if(AcvFrequency >= AcvFrequency_10HzTo20kHz) then -- bandwidth is set lower than necessary
+            if(AcvFrequency >= ACV_FREQUENCY_10HzTo20kHz) then -- bandwidth is set lower than necessary
                 table.insert(operatorHints, "- Set the AC detector bandwidth to the highest value below the")
                 table.insert(operatorHints, "    lowest frequency component of your signal!")
             end
@@ -242,16 +240,16 @@ function show_hints()
     end
 
     for key,value in next, operatorHints do
-        display.create(hints_id, display.OBJ_TEXT, 12, 32*key, value, display.COLOR_MEASUREMENT, display.FONT_MEDIUM)
+        display.create(Hints_id, display.OBJ_TEXT, 12, 32*key, value, UNCERTAINTY_COLOR_HINTS_TEXT, display.FONT_MEDIUM)
     end
     
-    local exit_id = display.create(hints_id, display.OBJ_BUTTON, 350, 360, "Back")
+    local exit_id = display.create(Hints_id, display.OBJ_BUTTON, 350, 360, "Back")
     display.setevent(exit_id, display.EVENT_PRESS, "close_hints()")
 end
 
 function close_hints() -- Closes the hints screen and goes back to swipe_id
     display.changescreen(display.SCREEN_HOME)
-    display.delete(hints_id)
+    display.delete(Hints_id)
     delay() -- Needed to allow change to swipe_id?
     display.changescreen(swipe_id)
     -- operatorHints = {} have become local...
@@ -273,7 +271,7 @@ function show_about() -- Opens the about screen
     table.insert(textLines, "This script is licensed under the CC BY 4.0 - have fun!")
     
     for key,value in next, textLines do
-        display.create(about_id, display.OBJ_TEXT, 12, 32*key, value, display.COLOR_MEASUREMENT, display.FONT_MEDIUM)
+        display.create(about_id, display.OBJ_TEXT, 12, 32*key, value, UNCERTAINTY_COLOR_HINTS_TEXT, display.FONT_MEDIUM)
     end
 
     local exit_id = display.create(about_id, display.OBJ_BUTTON, 350, 360, "Back")
@@ -289,6 +287,7 @@ function close_about() -- Closes the about screen and goes back to swipe_id
 end
 
 function getUnitSymbol()    
+    local unitString = ""
     local func = dmm.measure.func
         if     func == dmm.FUNC_DC_VOLTAGE      then unitString = "V"
         elseif func == dmm.FUNC_DIODE       then unitString = "V"
@@ -345,11 +344,10 @@ end
 function setup() -- Calls other init functions and creates the timers
     
     -- create "defines" and global variables
-    displayItems = {} -- Table that contains ids of the text object that display the values, filled in print_uncertainties()
-    unitString = ""
+    DisplayItems = {} -- Table that contains ids of the text object that display the values, filled in print_uncertainties()
       
-    if(calibrationInterval == nil) then
-        calibrationInterval = calibrationInterval_1year -- set the default
+    if(CalibrationInterval == nil) then
+        CalibrationInterval = CALIBRATION_INTERVAL_1_YEAR -- set the default
     end
     
     --if screen_is_setup ~= 1 
@@ -375,7 +373,7 @@ function check_valid(reading) -- Takes the most recent reading and verifies it's
 end
 
 function takeReading() -- take a reading and display the uncertainty
-    if(triggerReadingsFromApp == triggerReadingsFromApp_On) then -- 1 for "On", 2 for "Off"
+    if(TriggerReadingsFromApp == TRIGGER_READINGS_FROM_APP_ON) then -- 1 for "On", 2 for "Off"
         if((uncertainty_numberOfReadingsInBuffer == defbuffer1.n) or (defbuffer1.n == 0)) then -- no measurement was triggered from outside of this script?
             dmm.measure.read(defbuffer1)
             uncertainty_numberOfReadingsInBuffer = defbuffer1.n -- remember the amount of values in the buffer so we can detect changes next time
@@ -428,7 +426,7 @@ end
 function getDcvBaseUncertainty(reading, range, calInterval)    -- return measurement uncertainty in V
     local uncertOfReading = 0
     local uncertOfRange = 0
-    if(calInterval == calibrationInterval_24h) then
+    if(calInterval == CALIBRATION_INTERVAL_24_H) then
         if range == 0.1 then 
             uncertOfReading = 0.0015/100
             uncertOfRange = 0.0030/100
@@ -445,7 +443,7 @@ function getDcvBaseUncertainty(reading, range, calInterval)    -- return measure
             uncertOfReading = 0.0020/100
             uncertOfRange = 0.0006/100
         end
-    elseif(calInterval == calibrationInterval_90days) then
+    elseif(calInterval == CALIBRATION_INTERVAL_90_DAYS) then
         if range == 0.1 then 
             uncertOfReading = 0.0025/100
             uncertOfRange = 0.0035/100
@@ -462,7 +460,7 @@ function getDcvBaseUncertainty(reading, range, calInterval)    -- return measure
             uncertOfReading = 0.0035/100
             uncertOfRange = 0.0006/100
         end
-    elseif(calInterval == calibrationInterval_1year) then
+    elseif(calInterval == CALIBRATION_INTERVAL_1_YEAR) then
         if range == 0.1 then 
             uncertOfReading = 0.0030/100
             uncertOfRange = 0.0035/100
@@ -479,7 +477,7 @@ function getDcvBaseUncertainty(reading, range, calInterval)    -- return measure
             uncertOfReading = 0.0040/100
             uncertOfRange = 0.0006/100
         end
-    elseif(calInterval == calibrationInterval_2years) then
+    elseif(calInterval == CALIBRATION_INTERVAL_2_YEARS) then
         if range == 0.1 then 
             uncertOfReading = 0.0035/100
             uncertOfRange = 0.0035/100
@@ -544,7 +542,7 @@ end
 function getDciBaseUncertainty(reading, range, calInterval) -- return measurement uncertainty in A
     local uncertOfReading = 0
     local uncertOfRange = 0
-    if(calInterval == calibrationInterval_24h) then
+    if(calInterval == CALIBRATION_INTERVAL_24_H) then
         if range == 0.00001 then -- 10 µA
             return reading * 0.007/100 + range * 0.002/100
         elseif range == 0.0001 then -- 100 µA
@@ -562,7 +560,7 @@ function getDciBaseUncertainty(reading, range, calInterval) -- return measuremen
         elseif range == 10 then
             return reading * 0.140/100 + range * 0.025/100
         end
-    elseif(calInterval == calibrationInterval_90days) then
+    elseif(calInterval == CALIBRATION_INTERVAL_90_DAYS) then
         if range == 0.00001 then -- 10 µA
             return reading * 0.035/100 + range * 0.005/100
         elseif range == 0.0001 then -- 100 µA
@@ -580,7 +578,7 @@ function getDciBaseUncertainty(reading, range, calInterval) -- return measuremen
         elseif range == 10 then
             return reading * 0.190/100 + range * 0.025/100
         end
-    elseif(calInterval == calibrationInterval_1year) then
+    elseif(calInterval == CALIBRATION_INTERVAL_1_YEAR) then
         if range == 0.00001 then -- 10 µA
             return reading * 0.045/100 + range * 0.005/100
         elseif range == 0.0001 then -- 100 µA
@@ -598,7 +596,7 @@ function getDciBaseUncertainty(reading, range, calInterval) -- return measuremen
         elseif range == 10 then
             return reading * 0.220/100 + range * 0.025/100
         end
-    elseif (calInterval == calibrationInterval_2years) then
+    elseif (calInterval == CALIBRATION_INTERVAL_2_YEARS) then
         if range == 0.00001 then -- 10 µA
             return reading * 0.055/100 + range * 0.005/100
         elseif range == 0.0001 then -- 100 µA
@@ -660,7 +658,7 @@ function getDciAdditionalUncertainty(reading, range, calInterval)
 end
 
 function getResistanceBaseUncertainty(reading, range, calInterval) -- return measurement uncertainty in A
-    if(calInterval == calibrationInterval_24h) then
+    if(calInterval == CALIBRATION_INTERVAL_24_H) then
         if range == 1 then
             return reading * 0.0080/100 + range * 0.0200/100
         elseif range == 10 then
@@ -680,7 +678,7 @@ function getResistanceBaseUncertainty(reading, range, calInterval) -- return mea
         elseif range == 100000000 then -- 100 Meg
             return reading * 0.0800/100 + range * 0.0030/100
         end
-    elseif(calInterval == calibrationInterval_90days) then
+    elseif(calInterval == CALIBRATION_INTERVAL_90_DAYS) then
         if range == 1 then
             return reading * 0.0080/100 + range * 0.0200/100
         elseif range == 10 then
@@ -700,7 +698,7 @@ function getResistanceBaseUncertainty(reading, range, calInterval) -- return mea
         elseif range == 100000000 then -- 100 Meg
             return reading * 0.2000/100 + range * 0.0030/100
         end
-    elseif(calInterval == calibrationInterval_1year) then
+    elseif(calInterval == CALIBRATION_INTERVAL_1_YEAR) then
         if range == 1 then
             return reading * 0.0085/100 + range * 0.0200/100
         elseif range == 10 then
@@ -720,7 +718,7 @@ function getResistanceBaseUncertainty(reading, range, calInterval) -- return mea
         elseif range == 100000000 then -- 100 Meg
             return reading * 0.2000/100 + range * 0.0030/100
         end
-    elseif (calInterval == calibrationInterval_2years) then
+    elseif (calInterval == CALIBRATION_INTERVAL_2_YEARS) then
         if range == 1 then
             return reading * 0.0100/100 + range * 0.0200/100
         elseif range == 10 then
@@ -867,63 +865,63 @@ function getAcvUncertainty(reading, calInterval)
     -- the relative specification of the calibration cycle does not depend on the range,
     -- but only on the calibration cycle!
     local range = dmm.measure.range
-    if calibrationInterval == calibrationInterval_24h then
-        if AcvFrequency == AcvFrequency_3HzTo5Hz then
+    if CalibrationInterval == CALIBRATION_INTERVAL_24_H then
+        if AcvFrequency == ACV_FREQUENCY_3HzTo5Hz then
             return reading * 1.00/100 + range * 0.02/100
-        elseif AcvFrequency == AcvFrequency_5HzTo10Hz then
+        elseif AcvFrequency == ACV_FREQUENCY_5HzTo10Hz then
             return reading * 0.35/100 + range * 0.02/100
-        elseif AcvFrequency == AcvFrequency_10HzTo20kHz then
+        elseif AcvFrequency == ACV_FREQUENCY_10HzTo20kHz then
             return reading * 0.04/100 + range * 0.02/100
-        elseif AcvFrequency == AcvFrequency_20kHzTo50kHz then
+        elseif AcvFrequency == ACV_FREQUENCY_20kHzTo50kHz then
             return reading * 0.10/100 + range * 0.04/100
-        elseif AcvFrequency == AcvFrequency_50kHzTo100kHz then
+        elseif AcvFrequency == ACV_FREQUENCY_50kHzTo100kHz then
             return reading * 0.55/100 + range * 0.08/100
-        elseif AcvFrequency == AcvFrequency_100kHzTo300kHz then
+        elseif AcvFrequency == ACV_FREQUENCY_100kHzTo300kHz then
             return reading * 4.00/100 + range * 0.5/100
         else return 0 -- illegal frequency
         end
-    elseif calibrationInterval == calibrationInterval_90days then
-        if AcvFrequency == AcvFrequency_3HzTo5Hz then
+    elseif CalibrationInterval == CALIBRATION_INTERVAL_90_DAYS then
+        if AcvFrequency == ACV_FREQUENCY_3HzTo5Hz then
             return reading * 1.00/100 + range * 0.03/100
-        elseif AcvFrequency == AcvFrequency_5HzTo10Hz then
+        elseif AcvFrequency == ACV_FREQUENCY_5HzTo10Hz then
             return reading * 0.35/100 + range * 0.03/100
-        elseif AcvFrequency == AcvFrequency_10HzTo20kHz then
+        elseif AcvFrequency == ACV_FREQUENCY_10HzTo20kHz then
             return reading * 0.05/100 + range * 0.03/100
-        elseif AcvFrequency == AcvFrequency_20kHzTo50kHz then
+        elseif AcvFrequency == ACV_FREQUENCY_20kHzTo50kHz then
             return reading * 0.11/100 + range * 0.05/100
-        elseif AcvFrequency == AcvFrequency_50kHzTo100kHz then
+        elseif AcvFrequency == ACV_FREQUENCY_50kHzTo100kHz then
             return reading * 0.60/100 + range * 0.08/100
-        elseif AcvFrequency == AcvFrequency_100kHzTo300kHz then
+        elseif AcvFrequency == ACV_FREQUENCY_100kHzTo300kHz then
             return reading * 4.00/100 + range * 0.5/100
         else return 0 -- illegal frequency
         end
-    elseif calibrationInterval == calibrationInterval_1year then
-        if AcvFrequency == AcvFrequency_3HzTo5Hz then
+    elseif CalibrationInterval == CALIBRATION_INTERVAL_1_YEAR then
+        if AcvFrequency == ACV_FREQUENCY_3HzTo5Hz then
             return reading * 1.00/100 + range * 0.03/100
-        elseif AcvFrequency == AcvFrequency_5HzTo10Hz then
+        elseif AcvFrequency == ACV_FREQUENCY_5HzTo10Hz then
             return reading * 0.35/100 + range * 0.03/100
-        elseif AcvFrequency == AcvFrequency_10HzTo20kHz then
+        elseif AcvFrequency == ACV_FREQUENCY_10HzTo20kHz then
             return reading * 0.06/100 + range * 0.03/100
-        elseif AcvFrequency == AcvFrequency_20kHzTo50kHz then
+        elseif AcvFrequency == ACV_FREQUENCY_20kHzTo50kHz then
             return reading * 0.12/100 + range * 0.05/100
-        elseif AcvFrequency == AcvFrequency_50kHzTo100kHz then
+        elseif AcvFrequency == ACV_FREQUENCY_50kHzTo100kHz then
             return reading * 0.60/100 + range * 0.08/100
-        elseif AcvFrequency == AcvFrequency_100kHzTo300kHz then
+        elseif AcvFrequency == ACV_FREQUENCY_100kHzTo300kHz then
             return reading * 4.00/100 + range * 0.5/100
         else return 0 -- illegal frequency
         end
-    elseif calibrationInterval == calibrationInterval_2years then
-        if AcvFrequency == AcvFrequency_3HzTo5Hz then
+    elseif CalibrationInterval == CALIBRATION_INTERVAL_2_YEARS then
+        if AcvFrequency == ACV_FREQUENCY_3HzTo5Hz then
             return reading * 1.00/100 + range * 0.03/100
-        elseif AcvFrequency == AcvFrequency_5HzTo10Hz then
+        elseif AcvFrequency == ACV_FREQUENCY_5HzTo10Hz then
             return reading * 0.35/100 + range * 0.03/100
-        elseif AcvFrequency == AcvFrequency_10HzTo20kHz then
+        elseif AcvFrequency == ACV_FREQUENCY_10HzTo20kHz then
             return reading * 0.07/100 + range * 0.03/100
-        elseif AcvFrequency == AcvFrequency_20kHzTo50kHz then
+        elseif AcvFrequency == ACV_FREQUENCY_20kHzTo50kHz then
             return reading * 0.13/100 + range * 0.05/100
-        elseif AcvFrequency == AcvFrequency_50kHzTo100kHz then
+        elseif AcvFrequency == ACV_FREQUENCY_50kHzTo100kHz then
             return reading * 0.60/100 + range * 0.08/100
-        elseif AcvFrequency == AcvFrequency_100kHzTo300kHz then
+        elseif AcvFrequency == ACV_FREQUENCY_100kHzTo300kHz then
             return reading * 4.00/100 + range * 0.5/100
         else return 0 -- illegal frequency
         end
@@ -936,33 +934,33 @@ function getAciUncertainty(reading, calInterval) -- AC current
 -- TODO
     local range = dmm.measure.range
     if(range == 100E-6) then -- 100 uA              
-        if (AciFrequency == AciFrequency_3HzTo5Hz) or (AciFrequency == AciFrequency_5HzTo1kHz) then
+        if (AciFrequency == ACI_FREQUENCY_3HzTo5Hz) or (AciFrequency == ACI_FREQUENCY_5HzTo1kHz) then
             return reading * 0.10/100 + range * 0.07/100
-        elseif (AciFrequency == AciFrequency_1kHzTo5kHz) or (AciFrequency == AciFrequency_5kHzTo10kHz) then
+        elseif (AciFrequency == ACI_FREQUENCY_1kHzTo5kHz) or (AciFrequency == ACI_FREQUENCY_5kHzTo10kHz) then
             return reading * 0.15/100 + range * 0.07/100
         end
     elseif (range == 1E-3) or (range == 10E-3) or (range == 100E-3) then -- 1 mA - 100 mA ranges   
         return reading * 0.10/100 + range * 0.04/100 -- independent of frequency        
     elseif (range == 1.0) then -- 1 A range
-        if (AciFrequency == AciFrequency_3HzTo5Hz)  then
+        if (AciFrequency == ACI_FREQUENCY_3HzTo5Hz)  then
             return reading * 0.30/100 + range * 0.04/100 -- footnote 24
-        elseif (AciFrequency == AciFrequency_5HzTo1kHz) then
+        elseif (AciFrequency == ACI_FREQUENCY_5HzTo1kHz) then
             return reading * 0.10/100 + range * 0.04/100
         else -- >5 kHz
             return reading * 0.15/100 + range * 0.06/100
         end
     elseif (range == 3.0) then -- 3 A range
-        if (AciFrequency == AciFrequency_3HzTo5Hz)  then
+        if (AciFrequency == ACI_FREQUENCY_3HzTo5Hz)  then
             return reading * 0.35/100 + range * 0.06/100 -- footnote 24
         else 
             return reading * 0.15/100 + range * 0.06/100 
         end
     elseif (range == 10.0) then -- 10 A range
-        if (AciFrequency == AciFrequency_3HzTo5Hz)  then
+        if (AciFrequency == ACI_FREQUENCY_3HzTo5Hz)  then
             return reading * 0.6/100 + range * 0.06/100 -- footnote 24
-        elseif (AciFrequency == AciFrequency_5HzTo1kHz) then
+        elseif (AciFrequency == ACI_FREQUENCY_5HzTo1kHz) then
             return reading * 0.4/100 + range * 0.06/100 
-        elseif (AciFrequency == AciFrequency_1kHzTo5kHz) or (AciFrequency == AciFrequency_5kHzTo10kHz) then
+        elseif (AciFrequency == ACI_FREQUENCY_1kHzTo5kHz) or (AciFrequency == ACI_FREQUENCY_5kHzTo10kHz) then
             return reading * 1.0/100 + range * 0.07/100
         end
     end
@@ -980,7 +978,7 @@ function getUncertainty() --get the measurement uncertainty of the last measured
             return nil
         end    
         local uncertaintyFunction = getUncertaintyFunction();
-        return uncertaintyFunction(math.abs(reading), calibrationInterval)
+        return uncertaintyFunction(math.abs(reading), CalibrationInterval)
     end
 end
 
@@ -989,17 +987,19 @@ function update_uncertainties() -- Updates the number display
         local reading = defbuffer1[defbuffer1.endindex] -- the last reading that was taken by the meter   
         local uncertainty = getUncertainty()
         if (uncertainty==nil) then 
-            display.settext(displayItems[5], "---")
-            display.settext(displayItems[6], "---")
+            display.settext(DisplayItems[5], "---")
+            display.settext(DisplayItems[6], "---")
+            display.settext(DisplayItems[7], "---")
+            display.settext(DisplayItems[8], "---")
         else
-            display.settext(displayItems[5], prettyPrintValue(uncertainty, absUncertaintyRoundingDigits) .. getUnitSymbol()) -- absolute uncertainty
+            display.settext(DisplayItems[5], prettyPrintValue(uncertainty, ABS_UNCERTAINTY_ROUNDING_DIGITS) .. getUnitSymbol()) -- absolute uncertainty
             if(reading ~= 0.0) then
-                display.settext(displayItems[6], tostring(round(uncertainty/math.abs(reading)*1e6, relUncertaintyRoundingDigits)) .. " " .. "ppm") -- relative uncertainty
+                display.settext(DisplayItems[6], tostring(round(uncertainty/math.abs(reading)*1e6, REL_UNCERTAINTY_ROUNDING_DIGITS)) .. " " .. "ppm") -- relative uncertainty
             else
-                display.settext(displayItems[6], "--- " .. "ppm") -- relative uncertainty
+                display.settext(DisplayItems[6], "--- " .. "ppm") -- relative uncertainty
             end
-            display.settext(displayItems[7], prettyPrintValue(reading - uncertainty, errorLimitsRoundingDigits) .. getUnitSymbol())
-            display.settext(displayItems[8], prettyPrintValue(reading + uncertainty, errorLimitsRoundingDigits) .. getUnitSymbol())
+            display.settext(DisplayItems[7], prettyPrintValue(reading - uncertainty, ERROR_LIMITS_ROUNDING_DIGITS) .. getUnitSymbol())
+            display.settext(DisplayItems[8], prettyPrintValue(reading + uncertainty, ERROR_LIMITS_ROUNDING_DIGITS) .. getUnitSymbol())
         end
     end
 end
@@ -1017,35 +1017,40 @@ end
 
 --------------------------------- Script starts here ---------------------------------------
 -- define values to use for calibrationInterval (like an enum)
-calibrationInterval_24h    = 1
-calibrationInterval_90days = 2
-calibrationInterval_1year  = 3
-calibrationInterval_2years = 4
+CALIBRATION_INTERVAL_24_H    = 1
+CALIBRATION_INTERVAL_90_DAYS = 2
+CALIBRATION_INTERVAL_1_YEAR  = 3
+CALIBRATION_INTERVAL_2_YEARS = 4
 
-triggerReadingsFromApp_On = 1
-triggerReadingsFromApp_Off = 2
+TRIGGER_READINGS_FROM_APP_ON = 1
+TRIGGER_READINGS_FROM_APP_OFF = 2
 
-AcvFrequency_3HzTo5Hz            = 1
-AcvFrequency_5HzTo10Hz           = 2
-AcvFrequency_10HzTo20kHz         = 3
-AcvFrequency_20kHzTo50kHz        = 4
-AcvFrequency_50kHzTo100kHz       = 5
-AcvFrequency_100kHzTo300kHz      = 6
+ACV_FREQUENCY_3HzTo5Hz            = 1
+ACV_FREQUENCY_5HzTo10Hz           = 2
+ACV_FREQUENCY_10HzTo20kHz         = 3
+ACV_FREQUENCY_20kHzTo50kHz        = 4
+ACV_FREQUENCY_50kHzTo100kHz       = 5
+ACV_FREQUENCY_100kHzTo300kHz      = 6
 
-AciFrequency_3HzTo5Hz            = 1
-AciFrequency_5HzTo1kHz           = 2
-AciFrequency_1kHzTo5kHz          = 3
-AciFrequency_5kHzTo10kHz         = 4
+ACI_FREQUENCY_3HzTo5Hz            = 1
+ACI_FREQUENCY_5HzTo1kHz           = 2
+ACI_FREQUENCY_1kHzTo5kHz          = 3
+ACI_FREQUENCY_5kHzTo10kHz         = 4
 
 -- define display settings
-absUncertaintyRoundingDigits = 2
-relUncertaintyRoundingDigits = 2
-errorLimitsRoundingDigits = 4
+ABS_UNCERTAINTY_ROUNDING_DIGITS = 2
+REL_UNCERTAINTY_ROUNDING_DIGITS = 2
+ERROR_LIMITS_ROUNDING_DIGITS = 4
+
+-- define display colors - try to match the original look of the UI!
+UNCERTAINTY_COLOR_VALUE_LABEL = display.COLOR_VALUE_LABEL --0x047EA6
+UNCERTAINTY_COLOR_VALUE_VALUE = display.COLOR_VALUE_VALUE --0xE0E0E0
+UNCERTAINTY_COLOR_HINTS_TEXT = display.COLOR_VALUE_VALUE
 
 -- Variables for global settings - set to defaults
-triggerReadingsFromApp = triggerReadingsFromApp_On --Trigger measuremnts regularly from the script. Can be switched off for remote operation
-AcvFrequency = AcvFrequency_10HzTo20kHz
-AciFrequency = AciFrequency_5HzTo1kHz
+TriggerReadingsFromApp = TRIGGER_READINGS_FROM_APP_ON --Trigger measuremnts regularly from the script. Can be switched off for remote operation
+AcvFrequency = ACV_FREQUENCY_10HzTo20kHz
+AciFrequency = ACI_FREQUENCY_5HzTo1kHz
 
 -- Call opening functions and main()
 --reset()

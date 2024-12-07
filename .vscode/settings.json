@@ -25,6 +25,8 @@
         "utf8": "disable"
     },
     "Lua.workspace.library": [
-        "/home/jo/.vscode-oss/extensions/tektronix.tsp-toolkit-0.18.2/node_modules/@tektronix/keithley_instrument_libraries/keithley_instrument_libraries/tsp-lua-5.0"
+        "/home/jo/.vscode-oss/extensions/tektronix.tsp-toolkit-1.1.0/node_modules/@tektronix/keithley_instrument_libraries/keithley_instrument_libraries/DMM7510/Helper",
+        "/home/jo/.vscode-oss/extensions/tektronix.tsp-toolkit-1.1.0/node_modules/@tektronix/keithley_instrument_libraries/keithley_instrument_libraries/DMM7510/AllTspCommands",
+        "/home/jo/.vscode-oss/extensions/tektronix.tsp-toolkit-1.1.0/node_modules/@tektronix/keithley_instrument_libraries/keithley_instrument_libraries/tsp-lua-5.0"
     ]
 }
