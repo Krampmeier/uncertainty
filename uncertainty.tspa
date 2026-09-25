@@ -5,7 +5,7 @@ loadscript Uncertainty
 -- $Description: Calculates measurement uncertainty
 -- $Requires: v1.0.01f
 -- $Icon: uncertainty_icon
--- Last Updated: $Date: 2024-11-18
+-- Last Updated: $Date: 2026-11-26
 --[[
 Script: Uncertainty.tspa
 Written by: Johannes Raschke
@@ -23,7 +23,7 @@ TODO:
 * add support for K7510 (I probably won't have the nerve to do that)
 
 ***********************************************************
-*** Copyright 2024 Johannes Raschke                     ***
+*** Copyright 2024-2026 Johannes Raschke                ***
 *** All rights reserved.                                ***
 *** This source code is licensed under the CC BY 4.0    ***
 *** license.                                            ***
@@ -1050,7 +1050,8 @@ UNCERTAINTY_COLOR_VALUE_VALUE = display.COLOR_VALUE_VALUE --0xE0E0E0
 UNCERTAINTY_COLOR_HINTS_TEXT = display.COLOR_VALUE_VALUE
 
 -- Variables for global settings - set to defaults
-TriggerReadingsFromApp = TRIGGER_READINGS_FROM_APP_ON --Trigger measuremnts regularly from the script. Can be switched off for remote operation
+TriggerReadingsFromApp = TRIGGER_READINGS_FROM_APP_ON --Trigger measurements regularly from the script. Can be switched off for remote operation
+                                                      --The script will still update the uncertainty display
 AcvFrequency = ACV_FREQUENCY_10HzTo20kHz
 AciFrequency = ACI_FREQUENCY_5HzTo1kHz
 
